@@ -1,0 +1,27 @@
+# objects / binaries
+*.o
+*.obj
+*.a
+*.elf
+*.out
+*.bin
+*.lst
+*.map
+*.d
+
+# build output
+build/
+niyahlex
+niyah0
+niyah1
+niyah2
+niyah3
+
+# debug / editor
+core
+core.*
+*.dSYM/
+.vscode/
+.idea/
+*.swp
+compile_commands.json
