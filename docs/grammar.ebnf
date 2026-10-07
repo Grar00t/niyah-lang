@@ -1,0 +1,56 @@
+(* Niyah grammar. ISO-14977-style, extended: {x} = 0..n, [x] = optional, (a|b) = choice. *)
+(* Source: UTF-8, logical order. RTL is a display concern only. Identifiers compare bytewise (no normalisation). *)
+
+(* ---------- lexical ---------- *)
+letter     = "a".."z" | "A".."Z" | "_" | U+0620..U+064A | U+066E..U+06D3 | U+06FA..U+06FF ;
+mark       = U+064B..U+065F | U+0670 ;                (* harakat, shadda, dagger alif *)
+digit      = "0".."9" | U+0660..U+0669 | U+06F0..U+06F9 ;
+hexdigit   = "0".."9" | "a".."f" | "A".."F" ;
+ident      = letter { letter | digit | mark } ;       (* minus keywords *)
+intLit     = digit { digit } | "0" ("x"|"X") hexdigit { hexdigit } ;
+strLit     = '"' { ? any byte except '"', '\\', LF ? | "\\" ("n"|"t"|"r"|"0"|"\\"|'"') } '"' ;
+comment    = "//" { ? not LF ? } | "/*" { ? any ? } "*/" ;   (* no nesting *)
+space      = " " | TAB | CR | LF | U+200E | U+200F | U+061C ;
+
+keyword    = "إذا" | "وإلا" | "طالما" | "أرجع" | "متغير" | "ثابت" | "دالة" | "هيكل" ;
+            (* if else while return var const function struct(extension, required for self-hosting) *)
+COMMA      = "," | U+060C ;
+SEMI       = ";" | U+061B ;
+
+(* ---------- syntax ---------- *)
+program    = { decl } EOF ;
+decl       = funcDecl | structDecl | varDecl | constDecl ;
+
+funcDecl   = "دالة" ident "(" [ param { COMMA param } ] ")" [ "->" type ] block ;
+param      = ident ":" type ;
+structDecl = "هيكل" ident "{" { ident ":" type SEMI } "}" ;
+varDecl    = "متغير" ident ":" type [ "=" expr ] SEMI ;
+constDecl  = "ثابت" ident ":" type "=" expr SEMI ;
+
+type       = ident                       (* صحيح=i64, بايت=u8, منطقي=bool, or struct name *)
+           | "*" type                    (* pointer *)
+           | "[" intLit "]" type ;       (* fixed array *)
+
+block      = "{" { stmt } "}" ;
+stmt       = varDecl | constDecl | ifStmt | whileStmt | returnStmt | block | simpleStmt ;
+ifStmt     = "إذا" "(" expr ")" block [ "وإلا" ( ifStmt | block ) ] ;
+whileStmt  = "طالما" "(" expr ")" block ;
+returnStmt = "أرجع" [ expr ] SEMI ;
+simpleStmt = expr [ "=" expr ] SEMI ;     (* lvalue check is semantic *)
+
+expr       = orExpr ;
+orExpr     = andExpr   { "||" andExpr } ;
+andExpr    = bitOr     { "&&" bitOr } ;
+bitOr      = bitXor    { "|"  bitXor } ;
+bitXor     = bitAnd    { "^"  bitAnd } ;
+bitAnd     = equality  { "&"  equality } ;
+equality   = relation  { ("==" | "!=") relation } ;
+relation   = shift     { ("<" | "<=" | ">" | ">=") shift } ;
+shift      = additive  { ("<<" | ">>") additive } ;
+additive   = term      { ("+" | "-") term } ;
+term       = unary     { ("*" | "/" | "%") unary } ;
+unary      = ("-" | "!" | "~" | "*" | "&") unary | postfix ;
+postfix    = primary { "(" [ expr { COMMA expr } ] ")"   (* call; or conversion if callee is a type *)
+                     | "[" expr "]"
+                     | "." ident } ;
+primary    = intLit | strLit | ident | "(" expr ")" ;
