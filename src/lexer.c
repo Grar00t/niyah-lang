@@ -46,7 +46,7 @@ static u32 dec(const u8 *p, const u8 *e, u32 *n) {
     }
     if ((c & 0xF0) == 0xE0 && e - p >= 3 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
         u32 v = ((c & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-        if (v < 0x800) return 0xFFFFFFFF;
+        if (v < 0x800 || (v >= 0xD800 && v <= 0xDFFF)) return 0xFFFFFFFF;
         *n = 3; return v;
     }
     if ((c & 0xF8) == 0xF0 && e - p >= 4 && (p[1] & 0xC0) == 0x80 &&
@@ -138,7 +138,7 @@ static Token lex_number(Lexer *L, u32 line, u32 col) {
             d = (b >= '0' && b <= '9') ? b - '0' : (b >= 'a' && b <= 'f') ? b - 'a' + 10 :
                 (b >= 'A' && b <= 'F') ? b - 'A' + 10 : -1;
             if (d < 0) break;
-            if (v >> 60) { adv(L, 1); return mk(L, T_ERROR, s, line, col, E_OVF); }
+            if (v > (0x7FFFFFFFFFFFFFFFUL - (u64)d) / 16) { adv(L, 1); return mk(L, T_ERROR, s, line, col, E_OVF); }
             v = (v << 4) | (u64)d; any = 1; adv(L, 1);
         }
         if (!any) return mk(L, T_ERROR, s, line, col, E_HEX);
@@ -161,7 +161,10 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
         if (b == '\\') {
             int e = peek_byte(L, 1);
             if (e != 'n' && e != 't' && e != 'r' && e != '0' && e != '\\' && e != '"') {
-                adv(L, 1); return mk(L, T_ERROR, s, line, col, E_ESC);
+                adv(L, 1);
+                while ((e = peek_byte(L, 0)) >= 0 && e != '\n' && e != '"') adv(L, 1);
+                if (e == '"') adv(L, 1);
+                return mk(L, T_ERROR, s, line, col, E_ESC);
             }
             adv(L, 2); continue;
         }
