@@ -13,6 +13,6 @@ test: niyahlex
 	./niyahlex examples/مرحبا.نيّة
 
 clean:
-	rm -f niyahlex niyah0 niyah1 niyah2 niyah3
+	rm -f niyahlex niyah0 niyah1 niyah2 niyah3 tests/lexer_test tests/lex/مرحبا.actual
 
 .PHONY: all test clean
