@@ -1,12 +1,12 @@
 #include "../src/lexer.h"
 
-static int bytes_eq(const Token *t, const char *s) {
-    u32 i = 0;
-    while (s[i]) {
-        if (i >= t->len || t->start[i] != (u8)s[i]) return 0;
-        i++;
+static int bytes_eq(const Token *t, const u8 *s, u64 len) {
+    u64 i;
+    if (t->len != len) return 0;
+    for (i = 0; i < len; i++) {
+        if (t->start[i] != s[i]) return 0;
     }
-    return i == t->len;
+    return 1;
 }
 
 static int one(const u8 *src, u64 len, TokKind kind, i64 value) {
@@ -23,6 +23,7 @@ int main(void) {
     static const u8 max_hex[] = "0x7FFFFFFFFFFFFFFF";
     static const u8 overflow_hex[] = "0x8000000000000000";
     static const u8 prefix[] = { 0xD8,0xA5,0xD8,0xB0,0xD8,0xA7,0xD9,0x86 };
+    static const u8 keyword[] = { 0xD8,0xA5,0xD8,0xB0,0xD8,0xA7 };
     Lexer l;
     Token t;
 
@@ -37,7 +38,9 @@ int main(void) {
 
     lex_init(&l, prefix, sizeof prefix);
     t = lex_next(&l);
-    if (t.kind != T_IDENT || !bytes_eq(&t, (const char *)prefix)) return 6;
+    if (t.kind != T_IDENT || !bytes_eq(&t, prefix, sizeof prefix)) return 6;
+    if (lex_next(&l).kind != T_EOF) return 7;
+    if (!one(keyword, sizeof keyword, K_IF, 0)) return 8;
 
     return 0;
 }
