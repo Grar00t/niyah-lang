@@ -1,0 +1,32 @@
+name: M0 lexer verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lexer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out committed sources
+        uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          cc --version
+          make --version
+      - name: Execute exact M0 acceptance and golden token tests
+        run: make test
+      - name: Verify lexer edge cases with sanitizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -o "$RUNNER_TEMP/niyah-lexer-test-asan" \
+            tests/lexer_test.c src/lexer.c
+          "$RUNNER_TEMP/niyah-lexer-test-asan"
