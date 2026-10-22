@@ -209,6 +209,7 @@ Token lex_next(Lexer *L) {
 }
 
 #ifdef NIYAH_LEXER_STANDALONE
+#include "morph.h"
 /* ---- raw syscalls, no libc ---- */
 static i64 sys3(i64 nr, i64 a, i64 b, i64 c) {
     i64 r;
@@ -237,14 +238,77 @@ static void onum(i64 v) {
     oput((const u8 *)(t + i), (u32)(24 - i));
 }
 
+static int arg_eq(const char *a, const char *b) {
+    while (*a && *b && *a == *b) { a++; b++; }
+    return *a == 0 && *b == 0;
+}
+static void ocp(u32 c) {
+    u8 bytes[4]; u32 n;
+    if (c < 0x80) { bytes[0] = (u8)c; n = 1; }
+    else if (c < 0x800) { bytes[0] = (u8)(0xC0 | (c >> 6)); bytes[1] = (u8)(0x80 | (c & 63)); n = 2; }
+    else { bytes[0] = (u8)(0xE0 | (c >> 12)); bytes[1] = (u8)(0x80 | ((c >> 6) & 63));
+           bytes[2] = (u8)(0x80 | (c & 63)); n = 3; }
+    oput(bytes, n);
+}
+static int morph_separator(u32 c) {
+    return c <= 0x20 || c == ',' || c == ';' || c == '.' || c == ':' ||
+        c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' ||
+        c == '!' || c == '?' || c == '"' || c == '/' || c == '\\' ||
+        c == '=' || c == '+' || c == '*' || c == 0x60C || c == 0x61B || c == 0x61F ||
+        c == 0x200E || c == 0x200F || c == 0x61C;
+}
+static int dump_morph(const u8 *src, u64 len) {
+    static MorphResult result;
+    Lexer l; int errors = 0;
+    lex_init(&l, src, len);
+    while (l.cur < l.end) {
+        const u8 *start; u32 n, c, i, j, line, col; MorphStatus status;
+        c = peekc(&l, &n);
+        if (morph_separator(c)) { adv(&l, n); continue; }
+        start = l.cur; line = l.line; col = l.col;
+        do { adv(&l, n); c = peekc(&l, &n); } while (n && !morph_separator(c));
+        status = morph_analyze(start, (u32)(l.cur - start), &result);
+        onum(line); ostr(":"); onum(col); ostr("\tWORD\t");
+        oput(start, (u32)(l.cur - start)); ostr("\tstatus="); onum(status);
+        ostr("\tcandidates="); onum(result.count); ostr("\ttruncated=");
+        onum(result.truncated); ostr("\n");
+        if (status != MORPH_OK) errors++;
+        for (i = 0; i < result.count; i++) {
+            const MorphAnalysis *a = &result.analyses[i];
+            ostr("  "); onum(i); ostr("\t");
+            for (j = 0; j < a->count; j++) {
+                if (j) ostr(" + ");
+                ostr(morph_id_name(a->parts[j].id)); ostr("(");
+                oput(start + a->parts[j].offset, a->parts[j].len); ostr(")");
+            }
+            ostr("\tflags="); onum(a->flags); ostr("\tpattern=");
+            ostr(morph_pattern_name(a->pattern)); ostr("\tverb_id="); onum(a->verb_id);
+            if (a->root_len) {
+                ostr("\troot="); for (j = 0; j < a->root_len; j++) ocp(a->root[j]);
+            }
+            ostr("\n");
+        }
+    }
+    return errors;
+}
+
 __attribute__((noreturn, used)) static void niyah_main(long argc, char **argv) {
     static const char dflt[] = "\xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd8\xa7.\xd9\x86\xd9\x8a\xd9\x91\xd8\xa9"; /* مرحبا.نيّة */
-    const char *path = argc > 1 ? argv[1] : dflt;
+    int morph_mode = argc > 1 && arg_eq(argv[1], "--morph");
+    const char *path;
+    if (morph_mode && argc < 3) {
+        ostr("usage: niyahlex --morph FILE\n"); oflush(); sys3(SYS_exit, 1, 0, 0);
+    }
+    path = morph_mode ? argv[2] : argc > 1 ? argv[1] : dflt;
     i64 fd = sys3(SYS_open, (i64)path, 0, 0), total = 0, r;
     int errs = 0;
     Lexer L; Token t;
     if (fd < 0) { ostr("error: cannot open "); ostr(path); ostr("\n"); oflush(); sys3(SYS_exit, 1, 0, 0); }
     while ((r = sys3(SYS_read, fd, (i64)(srcbuf + total), (i64)sizeof srcbuf - total)) > 0) total += r;
+    if (morph_mode) {
+        errs = dump_morph(srcbuf, (u64)total); oflush();
+        sys3(SYS_exit, errs ? 2 : 0, 0, 0);
+    }
     lex_init(&L, srcbuf, (u64)total);
     do {
         t = lex_next(&L);
