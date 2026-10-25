@@ -1,0 +1,40 @@
+OK M1 nodes=39
+PROGRAM @2:1
+  FUNC @2:6 رئيسية
+    PARAM @2:13 س
+      TYPE_NAME @2:16 صحيح
+    PARAM @2:22 ص
+      TYPE_NAME @2:25 صحيح
+    TYPE_NAME @2:34 صحيح
+    BLOCK @2:39
+      VAR @3:11 ع
+        TYPE_NAME @3:14 صحيح
+        INT @3:21 ٤٢
+      IF @4:5
+        BINARY @4:20 &&
+          BINARY @4:12 ==
+            NAME @4:10 ع
+            INT @4:15 0x2A
+          BINARY @4:25 !=
+            NAME @4:23 س
+            INT @4:28 ١
+        BLOCK @4:31
+          RETURN @4:33
+            UNARY @4:38 -
+              INT @4:39 1
+        BLOCK @4:49
+          RETURN @4:51
+            INT @4:56 0
+      WHILE @5:5
+        BINARY @5:14 >=
+          NAME @5:12 ع
+          INT @5:17 0
+        BLOCK @5:20
+          ASSIGN @5:24 =
+            NAME @5:22 ع
+            BINARY @5:28 -
+              NAME @5:26 ع
+              INT @5:30 1
+  STRUCT @7:6 نقطة
+    FIELD @7:13 x
+      TYPE_NAME @7:16 صحيح

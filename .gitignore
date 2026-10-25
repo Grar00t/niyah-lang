@@ -12,6 +12,7 @@
 # build output
 build/
 niyahlex
+niyahparse
 niyah0
 niyah1
 niyah2
@@ -30,3 +31,4 @@ compile_commands.json
 tests/lexer_test
 tests/lexer_recovery_test
 tests/morph_test
+tests/parser_test

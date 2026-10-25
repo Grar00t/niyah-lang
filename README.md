@@ -12,24 +12,31 @@ Self-hosting compiler for نيّة (Niyah), a statically typed language with Ara
 
 ## Status
 
-M0 (lexer) implemented, plus a bounded Arabic morphology candidate analyzer.
-This optional word/identifier annotation aid is not an NLP model tokenizer or compiler.
-M1 (parser) and later stages are unimplemented; see docs/tokenizer.md and docs/milestones.md.
+M0 is implemented: Unicode-aware C11 lexer and optional Arabic morphology
+candidate analysis. M1 has a working syntax parser and arena-backed AST.
+This is NOT yet a native Niyah compiler: M2 type checking, IR, code
+generation, executable emission and self-hosting remain unimplemented.
+Morphology never changes programming-language identifier identity.
 
 ## Build
 
-Requires only a C11 compiler (stage0) and `make`.
+Requires a C11 compiler, GNU Make and Linux x86-64:
 
-```
-make            # builds ./niyahlex (freestanding, static, no libc)
-make test       # dumps tokens for examples/مرحبا.نيّة
-make verify-local    # offline golden + full lexer recovery + morph tests
-                       # GCC ASan/UBSan and Clang tests when installed
-./niyahlex FILE             # language tokens; exit 0 ok, 1 I/O error, 2 lex error
-./niyahlex --morph FILE     # Arabic raw-text candidate segmentation
-./niyahlex --annotate FILE  # language tokens + identifier candidates
-# GitHub Actions is manual-only to avoid billing. Local testing is authoritative.
-```
+    make                  # builds both freestanding, static ELF tools
+    make test             # lexer, morphology, parser, CLI and golden AST
+    make verify-local     # tests + GCC ASan/UBSan + ordinary Clang tests
+
+    ./niyahlex FILE             # M0 language token dump
+    ./niyahlex --morph FILE     # optional raw-text morphology candidates
+    ./niyahlex --annotate FILE  # optional identifier annotations
+    ./niyahparse FILE           # syntax validation: OK or diagnostic
+    ./niyahparse --ast FILE     # deterministic indented AST
+
+Exit codes for niyahparse: 0 valid; 1 usage/file; 2 syntax/lexical error;
+3 failed output write. This parses source but does NOT generate executables.
+For limitations see docs/M1_PARSER_2026-10-25.md.
+GitHub Actions remains manual-only to avoid billing.
+
 
 ## Layout
 
@@ -37,9 +44,14 @@ make verify-local    # offline golden + full lexer recovery + morph tests
 docs/architecture.md   pipeline, IR decision, bootstrap chain
 docs/grammar.ebnf      lexical + syntactic grammar
 docs/milestones.md     M0..M8 and the two-week plan
-src/lexer.[ch]         stage0 lexer
-examples/              sample programs
-tests/lex/             golden token streams
+src/lexer.[ch]         M0 compiler lexer
+src/morph.[ch]         opt-in morphology candidate layer
+src/parser.[ch]        M1 recursive descent and arena AST
+src/parser_cli.c       freestanding syntax checker / AST dumper
+examples/              sample source programs
+tests/lex/             M0 golden lexer output
+tests/parse/           M1 golden AST output
+tests/parser_test.c    parser correctness, AST and bounds tests
 ```
 
 ## License

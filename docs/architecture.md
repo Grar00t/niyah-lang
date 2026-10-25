@@ -2,17 +2,23 @@
 
 ## Implemented boundary (2026-10-25)
 
-Only M0 is implemented: a freestanding C11 language lexer, with optional
-Arabic word candidate segmentation and opt-in identifier annotations.
-The default token stream is byte-identical to the original golden fixture.
-No parser, AST, type checker, IR, register allocator, code generator, ELF
-emitter, or self-hosting compiler is implemented yet. The static ELF executable
-is the *lexer*, not the output of compiling a Niyah program. For runnable
-checks use make verify-local (offline; GitHub Actions is manual-only).
-See docs/tokenizer.md and docs/RESEARCH_2026-10-25.md.
+M0 is implemented: freestanding C11 lexer and optional morphology that does
+not rewrite language tokens or byte-exact identifier identity. M1 has a
+functioning recursive-descent syntax parser and arena-backed AST: declarations,
+functions, structs, parameters, types, control flow, assignments, expression
+precedence, calls, indexing and field access. A 16,384-node static arena
+and 128-frame recursion limit bound the standalone implementation.
+Parser errors fail fast; multi-error synchronization is NOT implemented.
+The niyahparse CLI is static ELF64 with raw syscalls, no libc.
 
+Neither static niyahparse nor niyahlex is a compiler for Niyah programs.
+M1 completion gates (30 positive and 30 negative golden fixtures, plus a
+serialization/reparse round trip) are still open. M2 typing, IR, register
+allocation, codegen, ELF emission and self-hosting are NOT implemented.
+Verification is local: make verify-local. GitHub Actions is manual-only.
+See docs/M1_PARSER_2026-10-25.md.
 
-Single binary, whole-program, one translation unit per run. Input: `.نيّة` files. Output: static ELF64 ET_EXEC. No `as`, no `ld`, no libc.
+**Target compiler architecture, not yet implemented:** single binary, whole-program, one translation unit per run. Input: `.نيّة` files. Output: static ELF64 ET_EXEC. No `as`, no `ld`, no libc.
 
 ## Pipeline
 
@@ -23,8 +29,8 @@ source bytes -> lexer -> parser -> AST -> typecheck -> IR (3AC, CFG) -> regalloc
 | Stage | Input | Output | Data structure | Notes |
 |---|---|---|---|---|
 | Lexer | UTF-8 bytes | Token stream (pull, 1-token lookahead) | `Token{kind,line,col,start,len,value}` | Slices into source buffer; no copies. Keywords matched bytewise. |
-| Parser | tokens | AST | Recursive descent; precedence climbing for binary ops | LL(1). No backtracking. Error recovery: sync on `;` / `}`. |
-| AST | | | Arena-allocated tagged nodes, `u32` indices not pointers | Pointer-free so the same layout is expressible in stage1 Niyah. |
+| Parser | tokens | AST | Recursive descent, precedence climbing | Implemented: fail-fast one diagnostic, max 128 nested parse frames; error synchronization not yet implemented. |
+| AST | parser | flat nodes | 1-based u32 first/last/next child links | Implemented: borrowed source-token slices, fixed arena, ordered children. |
 | Type checker | AST | Typed AST + symbol tables | Scope stack, struct table | Static, strict, no implicit coercion. Every conversion is `T(expr)`. Sizes and field offsets computed here. |
 | IR | typed AST | per-function CFG of basic blocks, 3AC | `Inst{op,dst,a,b,type}` in a flat array; blocks hold index ranges | Non-SSA, virtual registers, explicit loads/stores for address-taken vars. |
 | Codegen | IR | machine code bytes + fixups | Direct encoder (REX/ModRM/SIB), linear-scan regalloc | No text assembly stage. Calls use the System V integer ABI subset (rdi,rsi,rdx,rcx,r8,r9; rax ret). |

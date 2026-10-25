@@ -1,4 +1,4 @@
-name: M0 lexer verification
+name: Niyah native M0+M1 verification (manual only)
 
 # Manual-only. All acceptance tests run locally; do not launch billed CI on pushes.
 on:
@@ -18,9 +18,9 @@ jobs:
         run: |
           cc --version
           make --version
-      - name: Execute exact M0 acceptance and golden token tests
+      - name: Execute offline lexer, parser, morphology and golden tests
         run: make test
-      - name: Verify lexer edge cases with sanitizers
+      - name: Verify lexer, parser and morphology with sanitizers
         shell: bash
         run: |
           set -euo pipefail
@@ -39,3 +39,8 @@ jobs:
             -o "$RUNNER_TEMP/niyah-morph-test-asan" \
             tests/morph_test.c src/morph.c
           "$RUNNER_TEMP/niyah-morph-test-asan"
+          cc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -o "$RUNNER_TEMP/niyah-parser-test-asan" \
+            tests/parser_test.c src/parser.c src/lexer.c
+          "$RUNNER_TEMP/niyah-parser-test-asan"

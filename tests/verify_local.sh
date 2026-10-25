@@ -18,6 +18,10 @@ if command -v gcc >/dev/null 2>&1; then
         -fsanitize=address,undefined -fno-omit-frame-pointer \
         -o build/verify-local/morph-gcc-asan tests/morph_test.c src/morph.c
     ./build/verify-local/morph-gcc-asan
+    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+        -fsanitize=address,undefined -fno-omit-frame-pointer \
+        -o build/verify-local/parser-gcc-asan tests/parser_test.c src/parser.c src/lexer.c
+    ./build/verify-local/parser-gcc-asan
     echo 'GCC_ASAN_UBSAN_PASS'
 else
     echo 'FAIL: gcc is required for the sanitizer acceptance gate' >&2
@@ -34,12 +38,17 @@ if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
         -o build/verify-local/morph-clang tests/morph_test.c src/morph.c
     ./build/verify-local/morph-clang
+    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+        -o build/verify-local/parser-clang tests/parser_test.c src/parser.c src/lexer.c
+    ./build/verify-local/parser-clang
     echo 'CLANG_COMPILE_AND_TEST_PASS (Clang sanitizers not claimed)'
 fi
 
 if command -v readelf >/dev/null 2>&1; then
     readelf -h niyahlex | grep -Fq 'ELF64'
-    if readelf -d niyahlex | grep -q 'NEEDED'; then
+    readelf -h niyahparse | grep -Fq 'ELF64'
+    if readelf -d niyahlex | grep -q 'NEEDED' ||
+       readelf -d niyahparse | grep -q 'NEEDED'; then
         echo 'FAIL: dynamic library dependency found' >&2
         exit 1
     fi

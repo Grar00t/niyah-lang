@@ -7,18 +7,31 @@ malformed UTF-8 inside strings/comments (full-span non-leaking recovery),
 numeric overflow maximal-munch, CR/CRLF line accounting, and keyword boundaries,
 5,000 fixed-seed morphology byte cases, 4 MiB input limit, and an opt-in
 morphological annotation mode are covered by make test / make verify-local.
-No trained NLP tokenizer, dictionary-based disambiguator, or M1 implementation
-is implied. CI is intentionally manual-only to avoid paid GitHub Actions runs.
+No trained NLP tokenizer or dictionary disambiguator is implied.
+M1 status is tracked separately below. CI is manual-only to avoid paid runs.
 - Input: `examples/مرحبا.نيّة`.
 - Output: one line per token `line:col KIND text [=value]`; exit 0. Exit 2 if any T_ERROR.
 - Done: `make test` prints the expected token stream; `nm niyahlex | grep ' U '` empty; `ldd niyahlex` reports not dynamic; golden file in `tests/lex/` byte-equal.
 - Failures: code-point vs byte column drift; shadda (U+0651) splitting an identifier; Arabic-Indic digits not accepted; keyword prefix match (`إذان` must be IDENT); unterminated comment/string swallowing EOF; BOM.
 
 ## M1 Parser + AST dump
-- Input: any `.نيّة` valid under `docs/grammar.ebnf`.
-- Output: S-expression AST on stdout; `هيكل`, `دالة`, all statements and 11 precedence levels.
-- Done: 30 positive tests produce golden dumps; 30 negative tests exit 1 with `file:line:col: expected X, got Y`; dump of dump-reparse is idempotent.
-- Failures: dangling `وإلا`; unary `*`/`&` vs binary; `-` after `->`; infinite loop on error recovery without token progress; arena overflow.
+
+First functional slice implemented (2026-10-25), not the final milestone.
+The parser accepts declarations, functions, structs, parameters, pointer and
+array types, blocks, conditions, loops, returns, assignments, calls, index,
+member access, and defined operator precedence.
+
+The source produces an indented AST with 1-based arena indices, not the
+originally proposed S-expression/round-trip serializer. The standalone
+niyahparse validates syntax and returns 2 on an error, no machine code.
+Verified: 8 positive and 15 negative fixtures, one golden AST, 3,000 seeded
+byte cases, AST structural invariants, arena and block/else-if depth limits,
+CLI input bounds; GCC ASan/UBSan and ordinary Clang tests.
+
+Remaining M1 acceptance gates: 30 positive/30 negative golden fixtures,
+multi-error recovery, AST dump/reparse round trip, larger project fixtures.
+These have NOT been met. No M2 type checking is implemented.
+
 
 ## M2 Type checker
 - Input: AST.
@@ -62,16 +75,19 @@ is implied. CI is intentionally manual-only to avoid paid GitHub Actions runs.
 - Done: `cmp niyah2 niyah3` == 0; `make bootstrap` reproduces from a clean checkout with only `cc`.
 - Failures: nondeterminism (uninitialised padding written to ELF, pointer-order iteration, timestamps); stage1≠stage2 due to a latent stage0 bug (bisect by diffing `--dump-ir`).
 
-# Two-week plan
+# Historical two-week planning sketch (not an execution schedule)
 
-Scope statement: M0–M6 are realistic in 14 days. M7 is stretch; M8 is not scheduled inside 14 days.
+The following table is the original proposed sequencing, not a verified
+14-day delivery estimate or completion claim. The only verified deliverables
+are the M0 toolchain and the first M1 parser/AST slice. M2 through M8 are
+still unimplemented and no delivery dates are committed.
 
 | Day | Artifacts |
 |---|---|
 | 1 | `src/lexer.c/.h`, `Makefile`, `tests/lex/*.nya` + golden `.out` (M0 done), docs, repo |
-| 2 | `src/ast.h` (node kinds, arena), `src/arena.c`, `src/parser.c` exprs (precedence climbing) |
-| 3 | `parser.c` statements, decls, types; `--dump-ast`; 30 positive goldens |
-| 4 | Parser error paths + recovery; 30 negative goldens (M1 done) |
+| 2 | M1 slice delivered: parser.h/parser.c/parser_cli.c, arena AST and precedence climbing |
+| 3 | Statements, declarations, types and --ast delivered; 30 positive goldens remain open |
+| 4 | Fail-fast parser errors and bounded input delivered; multi-error recovery and 30 negative goldens remain open |
 | 5 | `src/types.c`: type table, struct layout, scopes, predeclared roots |
 | 6 | `src/check.c`: expressions, no-coercion rules, calls/conversions; `tests/type_neg/` (M2 done) |
 | 7 | `src/ir.h`, `src/irgen.c` for expressions and locals; `--dump-ir` |

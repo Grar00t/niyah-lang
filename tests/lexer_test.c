@@ -58,6 +58,10 @@ int main(void) {
     if (!one(invalid_block_comment, sizeof invalid_block_comment, T_ERROR, 6)) return 14;
     if (!one(arabic_line_comment, sizeof arabic_line_comment - 1, K_IF, 0)) return 15;
     if (!one(arabic_string, sizeof arabic_string - 1, T_STRING, 0)) return 16;
+    /* The spelling is ثابت (tha-alif-ba-ta), not ثاتب. */
+    if (!one((const u8 *)"ثابت", sizeof "ثابت" - 1, K_CONST, 0)) return 17;
+    if (!one((const u8 *)"ثاتب", sizeof "ثاتب" - 1, T_IDENT, 0)) return 18;
+    if (!one((const u8 *)"ثابتة", sizeof "ثابتة" - 1, T_IDENT, 0)) return 19;
 
     return 0;
 }
