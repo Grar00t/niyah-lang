@@ -31,6 +31,11 @@ jobs:
           "$RUNNER_TEMP/niyah-lexer-test-asan"
           cc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
             -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -o "$RUNNER_TEMP/niyah-lexer-recovery-test-asan" \
+            tests/lexer_recovery_test.c src/lexer.c
+          "$RUNNER_TEMP/niyah-lexer-recovery-test-asan"
+          cc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
             -o "$RUNNER_TEMP/niyah-morph-test-asan" \
             tests/morph_test.c src/morph.c
           "$RUNNER_TEMP/niyah-morph-test-asan"

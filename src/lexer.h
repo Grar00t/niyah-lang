@@ -29,6 +29,7 @@ typedef struct {
 typedef struct {
     const u8 *cur, *end;
     u32 line, col;
+    u8 last_cr;            /* CRLF counts as one logical newline */
 } Lexer;
 
 void lex_init(Lexer *L, const u8 *src, u64 len);

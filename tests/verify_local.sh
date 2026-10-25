@@ -12,6 +12,10 @@ if command -v gcc >/dev/null 2>&1; then
     ./build/verify-local/lexer-gcc-asan
     gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
         -fsanitize=address,undefined -fno-omit-frame-pointer \
+        -o build/verify-local/lexer-recovery-gcc-asan tests/lexer_recovery_test.c src/lexer.c
+    ./build/verify-local/lexer-recovery-gcc-asan
+    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+        -fsanitize=address,undefined -fno-omit-frame-pointer \
         -o build/verify-local/morph-gcc-asan tests/morph_test.c src/morph.c
     ./build/verify-local/morph-gcc-asan
     echo 'GCC_ASAN_UBSAN_PASS'
@@ -24,6 +28,9 @@ if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
         -o build/verify-local/lexer-clang tests/lexer_test.c src/lexer.c
     ./build/verify-local/lexer-clang
+    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
+        -o build/verify-local/lexer-recovery-clang tests/lexer_recovery_test.c src/lexer.c
+    ./build/verify-local/lexer-recovery-clang
     clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
         -o build/verify-local/morph-clang tests/morph_test.c src/morph.c
     ./build/verify-local/morph-clang

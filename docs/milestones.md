@@ -3,7 +3,8 @@
 ## M0 Lexer
 
 **Implemented and locally verified (2026-10-25).** Exact golden lexer output,
-malformed UTF-8 inside strings/comments, numeric and keyword boundaries,
+malformed UTF-8 inside strings/comments (full-span non-leaking recovery),
+numeric overflow maximal-munch, CR/CRLF line accounting, and keyword boundaries,
 5,000 fixed-seed morphology byte cases, 4 MiB input limit, and an opt-in
 morphological annotation mode are covered by make test / make verify-local.
 No trained NLP tokenizer, dictionary-based disambiguator, or M1 implementation

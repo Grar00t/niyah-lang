@@ -10,9 +10,13 @@ digit      = "0".."9" | U+0660..U+0669 | U+06F0..U+06F9 ;
 hexdigit   = "0".."9" | "a".."f" | "A".."F" ;
 ident      = letter { letter | digit | mark } ;       (* minus keywords *)
 intLit     = digit { digit } | "0" ("x"|"X") hexdigit { hexdigit } ;
-strLit     = '"' { ? any byte except '"', '\\', LF ? | "\\" ("n"|"t"|"r"|"0"|"\\"|'"') } '"' ;
-comment    = "//" { ? not LF ? } | "/*" { ? any ? } "*/" ;   (* no nesting *)
+            (* 0x without hex digits => E_HEX. Overflow consumes the entire
+               decimal/hex digit run and returns one E_OVF token. *)
+strLit     = '"' { ? valid Unicode scalar except '"', '\\', LF or CR ? | "\\" ("n"|"t"|"r"|"0"|"\\"|'"') } '"' ;
+comment    = "//" { ? valid Unicode scalar except LF or CR ? }
+           | "/*" { ? valid Unicode scalar ? } "*/" ;  (* no nesting *)
 space      = " " | TAB | CR | LF | U+200E | U+200F | U+061C ;
+            (* CR, LF, CRLF are each one logical newline; columns count scalars. *)
 
 keyword    = "إذا" | "وإلا" | "طالما" | "أرجع" | "متغير" | "ثابت" | "دالة" | "هيكل" ;
             (* if else while return var const function struct(extension, required for self-hosting) *)

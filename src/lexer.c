@@ -30,7 +30,7 @@ const char *tok_name(TokKind k) { return k < T_COUNT ? NAMES[k] : "?"; }
 const char *lex_errmsg(i64 id) { return ERRS[id]; }
 
 void lex_init(Lexer *L, const u8 *src, u64 len) {
-    L->cur = src; L->end = src + len; L->line = 1; L->col = 1;
+    L->cur = src; L->end = src + len; L->line = 1; L->col = 1; L->last_cr = 0;
     if (len >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF) L->cur += 3;
 }
 
@@ -77,8 +77,15 @@ static u32 peekc(const Lexer *L, u32 *n) { return dec(L->cur, L->end, n); }
 static void adv(Lexer *L, u32 n) {
     while (n--) {
         u8 b = *L->cur++;
-        if (b == '\n') { L->line++; L->col = 1; }
-        else if ((b & 0xC0) != 0x80) L->col++;
+        if (b == '\r') {
+            L->line++; L->col = 1; L->last_cr = 1;
+        } else if (b == '\n') {
+            if (!L->last_cr) L->line++;
+            L->col = 1; L->last_cr = 0;
+        } else {
+            if ((b & 0xC0) != 0x80) L->col++;
+            L->last_cr = 0;
+        }
     }
 }
 static int peek_byte(const Lexer *L, u32 off) {
@@ -91,30 +98,49 @@ static Token mk(const Lexer *L, TokKind k, const u8 *s, u32 line, u32 col, i64 v
     return t;
 }
 
-/* returns 0 ok, or error id (unterminated comment) */
-static int skip_trivia(Lexer *L) {
+/* Consume comment/trivia to a safe boundary before returning a single error.
+ * Error tokens retain the original comment span and opening position. */
+static int skip_trivia(Lexer *L, Token *error) {
     for (;;) {
         u32 n, c = peekc(L, &n);
         if (n == 0) return 0;
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == 0x200F || c == 0x200E ||
-            c == 0x061C) { adv(L, n); continue; }     /* RLM/LRM/ALM are whitespace */
+            c == 0x061C) { adv(L, n); continue; } /* RLM/LRM/ALM are whitespace */
         if (c == '/' && peek_byte(L, 1) == '/') {
+            const u8 *start = L->cur;
+            u32 line = L->line, col = L->col;
+            int malformed = 0;
+            adv(L, 2);
             while (L->cur < L->end) {
                 c = peekc(L, &n);
-                if (c == '\n') break;
-                if (c == 0xFFFFFFFFu) return 0; /* surface malformed bytes as T_ERROR */
+                if (c == '\r' || c == '\n') break;
+                if (c == 0xFFFFFFFFu) malformed = 1;
                 adv(L, n);
+            }
+            if (malformed) {
+                *error = mk(L, T_ERROR, start, line, col, E_CHAR);
+                return 1;
             }
             continue;
         }
         if (c == '/' && peek_byte(L, 1) == '*') {
+            const u8 *start = L->cur;
+            u32 line = L->line, col = L->col;
+            int malformed = 0;
             adv(L, 2);
             for (;;) {
-                if (L->cur >= L->end) return E_COMMENT;
+                if (L->cur >= L->end) {
+                    *error = mk(L, T_ERROR, start, line, col, E_COMMENT);
+                    return 1;
+                }
                 c = peekc(L, &n);
-                if (c == 0xFFFFFFFFu) return 0;
                 if (c == '*' && peek_byte(L, 1) == '/') { adv(L, 2); break; }
+                if (c == 0xFFFFFFFFu) malformed = 1;
                 adv(L, n);
+            }
+            if (malformed) {
+                *error = mk(L, T_ERROR, start, line, col, E_CHAR);
+                return 1;
             }
             continue;
         }
@@ -145,17 +171,50 @@ static Token lex_number(Lexer *L, u32 line, u32 col) {
             d = (b >= '0' && b <= '9') ? b - '0' : (b >= 'a' && b <= 'f') ? b - 'a' + 10 :
                 (b >= 'A' && b <= 'F') ? b - 'A' + 10 : -1;
             if (d < 0) break;
-            if (v > (0x7FFFFFFFFFFFFFFFUL - (u64)d) / 16) { adv(L, 1); return mk(L, T_ERROR, s, line, col, E_OVF); }
+            if (v > (0x7FFFFFFFFFFFFFFFUL - (u64)d) / 16) {
+                /* Consume the entire malformed literal, not just the first overflowing digit. */
+                do {
+                    adv(L, 1);
+                    b = peek_byte(L, 0);
+                    d = (b >= '0' && b <= '9') ? b - '0' :
+                        (b >= 'a' && b <= 'f') ? b - 'a' + 10 :
+                        (b >= 'A' && b <= 'F') ? b - 'A' + 10 : -1;
+                } while (d >= 0);
+                return mk(L, T_ERROR, s, line, col, E_OVF);
+            }
             v = (v << 4) | (u64)d; any = 1; adv(L, 1);
         }
         if (!any) return mk(L, T_ERROR, s, line, col, E_HEX);
         return mk(L, T_INT, s, line, col, (i64)v);
     }
     while ((c = peekc(L, &n)), n && (d = digit_val(c)) >= 0) {
-        if (v > (0x7FFFFFFFFFFFFFFFUL - (u64)d) / 10) { adv(L, n); return mk(L, T_ERROR, s, line, col, E_OVF); }
+        if (v > (0x7FFFFFFFFFFFFFFFUL - (u64)d) / 10) {
+            do {
+                adv(L, n);
+                c = peekc(L, &n);
+            } while (n && digit_val(c) >= 0);
+            return mk(L, T_ERROR, s, line, col, E_OVF);
+        }
         v = v * 10 + (u64)d; adv(L, n);
     }
     return mk(L, T_INT, s, line, col, (i64)v);
+}
+
+/* On malformed string data, stop at the actual unescaped closing quote.
+ * Do not expose the contents of an invalid string as executable tokens. */
+static void skip_string_tail(Lexer *L) {
+    while (L->cur < L->end) {
+        u32 n, c = peekc(L, &n);
+        if (!n || c == '\n' || c == '\r') return;
+        if (c == '"') { adv(L, n); return; }
+        if (c == '\\') {
+            adv(L, n);
+            c = peekc(L, &n);
+            if (n && c != '\n' && c != '\r') adv(L, n);
+            continue;
+        }
+        adv(L, n);
+    }
 }
 
 static Token lex_string(Lexer *L, u32 line, u32 col) {
@@ -163,9 +222,10 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
     adv(L, 1);
     for (;;) {
         u32 n, c = peekc(L, &n);
-        if (n == 0 || c == '\n') return mk(L, T_ERROR, s, line, col, E_STR);
+        if (n == 0 || c == '\n' || c == '\r') return mk(L, T_ERROR, s, line, col, E_STR);
         if (c == 0xFFFFFFFFu) {
-            adv(L, 1); /* make progress; reject malformed UTF-8 within strings */
+            adv(L, n);
+            skip_string_tail(L);
             return mk(L, T_ERROR, s, line, col, E_CHAR);
         }
         if (c == '"') { adv(L, 1); return mk(L, T_STRING, s, line, col, 0); }
@@ -173,8 +233,7 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
             int e = peek_byte(L, 1);
             if (e != 'n' && e != 't' && e != 'r' && e != '0' && e != '\\' && e != '"') {
                 adv(L, 1);
-                while ((e = peek_byte(L, 0)) >= 0 && e != '\n' && e != '"') adv(L, 1);
-                if (e == '"') adv(L, 1);
+                skip_string_tail(L);
                 return mk(L, T_ERROR, s, line, col, E_ESC);
             }
             adv(L, 2); continue;
@@ -184,8 +243,9 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
 }
 
 Token lex_next(Lexer *L) {
-    const u8 *s; u32 n, c, line, col; int e, b1;
-    if ((e = skip_trivia(L)) != 0) return mk(L, T_ERROR, L->cur, L->line, L->col, e);
+    const u8 *s; u32 n, c, line, col; int b1;
+    Token error;
+    if (skip_trivia(L, &error)) return error;
     line = L->line; col = L->col; s = L->cur;
     c = peekc(L, &n);
     if (n == 0) return mk(L, T_EOF, s, line, col, 0);
@@ -224,7 +284,7 @@ Token lex_next(Lexer *L) {
 /* ---- raw syscalls, no libc ---- */
 static i64 sys3(i64 nr, i64 a, i64 b, i64 c) {
     i64 r;
-    __asm__ volatile ("syscall" : "=a"(r) : "a"(nr), "D"(a), "S"(b), "d"(c) : "rcx", "r11", "memory");
+    __asm__ volatile ("syscall" : "=a"(r) : "a"(nr), "D"(a), "S"(b), "d"(c) : "rcx", "r11", "cc", "memory");
     return r;
 }
 #define SYS_read 0

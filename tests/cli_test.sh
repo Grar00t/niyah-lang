@@ -9,6 +9,11 @@ grep -Fq 'CONJ_W(و) + DET_AL(ال) + STEM(كتاب)' "$tmp/morph.out"
 grep -Fq 'FUTURE_S(س) + IMPF_Y(ي) + STEM(كتب)' "$tmp/morph.out"
 grep -Fq 'pattern=MAFOOL' "$tmp/morph.out"
 grep -Fq 'root=كتب' "$tmp/morph.out"
+# ASCII Al- is an explicit transliteration convention; hyphen is intentionally
+# not a generic word separator in --morph mode.
+printf 'Al-book\n' > "$tmp/al-prefixed.txt"
+./niyahlex --morph "$tmp/al-prefixed.txt" > "$tmp/al-prefixed.out"
+grep -Fq 'DET_AL(Al-) + STEM(book)' "$tmp/al-prefixed.out"
 printf 'دالة رئيسية() -> صحيح { متغير والكتاب: صحيح = 5؛ أرجع والكتاب؛ }\n' > "$tmp/code.نيّة"
 ./niyahlex --annotate "$tmp/code.نيّة" > "$tmp/annotated.out"
 grep -Fq 'IDENT_MORPH' "$tmp/annotated.out"
@@ -18,8 +23,25 @@ if grep -q 'MORPH' "$tmp/default.out"; then
     echo 'FAIL: default lexer output changed' >&2; exit 1
 fi
 # Removing only the diagnostic lines must reproduce the unmodified tokens.
-grep -vE 'IDENT_MORPH|^  [0-9]+[[:space:]]' "$tmp/annotated.out" > "$tmp/filtered.out"
+# Filter output by its actual record grammar, never by a substring of source text.
+# An identifier called IDENT_MORPH is still a legitimate code token.
+awk '
+    /^[0-9]+:[0-9]+[[:space:]]+IDENT_MORPH[[:space:]]/ { next }
+    /^  [0-9]+[[:space:]]/ { next }
+    { print }
+' "$tmp/annotated.out" > "$tmp/filtered.out"
 cmp "$tmp/default.out" "$tmp/filtered.out"
+
+printf 'متغير IDENT_MORPH: صحيح = ١؛\n' > "$tmp/named-after-metadata.نيّة"
+./niyahlex "$tmp/named-after-metadata.نيّة" > "$tmp/expected-named.out"
+./niyahlex --annotate "$tmp/named-after-metadata.نيّة" > "$tmp/annotated-named.out"
+awk '
+    /^[0-9]+:[0-9]+[[:space:]]+IDENT_MORPH[[:space:]]/ { next }
+    /^  [0-9]+[[:space:]]/ { next }
+    { print }
+' "$tmp/annotated-named.out" > "$tmp/filtered-named.out"
+cmp "$tmp/expected-named.out" "$tmp/filtered-named.out"
+grep -Fq "$(printf '\tIDENT\tIDENT_MORPH')" "$tmp/filtered-named.out"
 
 # 97 valid Arabic base characters exceed the morph analyzer's 96-base cap,
 # but the programming identifier and annotation mode must remain valid.

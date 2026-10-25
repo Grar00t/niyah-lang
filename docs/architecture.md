@@ -36,7 +36,7 @@ Runtime: `_start` is emitted by the compiler (assembly stub, 6 instructions): al
 
 **Linker pass: emit ELF directly vs. emit `.s` for an external assembler.** Direct emission removes `as`/`ld` from the trusted base and is required for a zero-dependency bootstrap; cost is a hand-written encoder (~600 lines for the instruction subset used). Chosen: direct emission. The encoder only needs ~25 instruction forms.
 
-**Source encoding: bytewise identifiers vs. NFC-normalised.** Normalisation needs Unicode tables (data dependency, large). Bytewise compare is deterministic and 10 lines. Chosen: bytewise; the same visual identifier typed with different code point sequences is two identifiers. Mitigation: lexer rejects nothing, a later lint pass may warn on U+0640 / presentation forms.
+**Source encoding: bytewise identifiers vs. NFC-normalised.** Normalisation needs Unicode tables (data dependency, large). Bytewise compare is deterministic and 10 lines. Chosen: bytewise; the same visual identifier typed with different code point sequences is two identifiers. The lexer rejects malformed UTF-8 and characters outside its accepted classes; a later lint pass may additionally flag U+0640 and visually confusable or presentation forms.
 
 **Keyword set.** The seven specified keywords are insufficient for self-hosting (the compiler needs aggregates). `هيكل` (struct) is added as an eighth keyword. Everything else (types, `صواب`/`خطأ`, intrinsics) is predeclared identifiers in the root scope.
 

@@ -28,4 +28,5 @@ compile_commands.json
 
 # locally compiled unit-test executables
 tests/lexer_test
+tests/lexer_recovery_test
 tests/morph_test
