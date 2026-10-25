@@ -23,7 +23,10 @@ test: niyahlex tests/lexer_test tests/morph_test
 	sh tests/cli_test.sh
 	rm -f tests/lex/مرحبا.actual
 
+verify-local: test
+	sh tests/verify_local.sh
+
 clean:
 	rm -f niyahlex niyah0 niyah1 niyah2 niyah3 tests/lexer_test tests/morph_test tests/lex/مرحبا.actual
 
-.PHONY: all test clean
+.PHONY: all test verify-local clean

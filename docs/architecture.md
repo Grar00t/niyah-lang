@@ -1,5 +1,17 @@
 # Niyah architecture
 
+## Implemented boundary (2026-10-25)
+
+Only M0 is implemented: a freestanding C11 language lexer, with optional
+Arabic word candidate segmentation and opt-in identifier annotations.
+The default token stream is byte-identical to the original golden fixture.
+No parser, AST, type checker, IR, register allocator, code generator, ELF
+emitter, or self-hosting compiler is implemented yet. The static ELF executable
+is the *lexer*, not the output of compiling a Niyah program. For runnable
+checks use make verify-local (offline; GitHub Actions is manual-only).
+See docs/tokenizer.md and docs/RESEARCH_2026-10-25.md.
+
+
 Single binary, whole-program, one translation unit per run. Input: `.نيّة` files. Output: static ELF64 ET_EXEC. No `as`, no `ld`, no libc.
 
 ## Pipeline

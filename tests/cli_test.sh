@@ -17,6 +17,20 @@ grep -Fq 'CONJ_W(و) + DET_AL(ال) + STEM(كتاب)' "$tmp/annotated.out"
 if grep -q 'MORPH' "$tmp/default.out"; then
     echo 'FAIL: default lexer output changed' >&2; exit 1
 fi
+# Removing only the diagnostic lines must reproduce the unmodified tokens.
+grep -vE 'IDENT_MORPH|^  [0-9]+[[:space:]]' "$tmp/annotated.out" > "$tmp/filtered.out"
+cmp "$tmp/default.out" "$tmp/filtered.out"
+
+# 97 valid Arabic base characters exceed the morph analyzer's 96-base cap,
+# but the programming identifier and annotation mode must remain valid.
+printf 'متغير ' > "$tmp/long-code.نيّة"
+i=0
+while [ "$i" -lt 97 ]; do printf 'ك' >> "$tmp/long-code.نيّة"; i=$((i+1)); done
+printf ': صحيح = ٤٢؛\n' >> "$tmp/long-code.نيّة"
+./niyahlex "$tmp/long-code.نيّة" > /dev/null
+./niyahlex --annotate "$tmp/long-code.نيّة" > "$tmp/long-annotated.out"
+grep -Fq 'status=2' "$tmp/long-annotated.out"
+grep -Fq 'truncated=1' "$tmp/long-annotated.out"
 printf '\355\240\200' > "$tmp/bad-utf8"
 if ./niyahlex --morph "$tmp/bad-utf8" > "$tmp/bad.out"; then
     echo 'FAIL: invalid UTF-8 should be rejected' >&2; exit 1
@@ -34,4 +48,11 @@ fi
 if ./niyahlex --annotate > "$tmp/missing2.out"; then
     echo 'FAIL: --annotate without file' >&2; exit 1
 fi
-echo 'cli_test: morphology, source annotation, invalid UTF-8, size bound PASS'
+# /dev/full deterministically exercises failed stdout writes on Linux.
+if test -c /dev/full; then
+    if ./niyahlex "$tmp/code.نيّة" > /dev/full; then
+        echo 'FAIL: stdout error was silently ignored' >&2
+        exit 1
+    fi
+fi
+echo 'cli_test: morphology, source annotation, invalid UTF-8, size bound, output errors PASS'

@@ -99,15 +99,22 @@ static int skip_trivia(Lexer *L) {
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == 0x200F || c == 0x200E ||
             c == 0x061C) { adv(L, n); continue; }     /* RLM/LRM/ALM are whitespace */
         if (c == '/' && peek_byte(L, 1) == '/') {
-            while (L->cur < L->end && *L->cur != '\n') adv(L, 1);
+            while (L->cur < L->end) {
+                c = peekc(L, &n);
+                if (c == '\n') break;
+                if (c == 0xFFFFFFFFu) return 0; /* surface malformed bytes as T_ERROR */
+                adv(L, n);
+            }
             continue;
         }
         if (c == '/' && peek_byte(L, 1) == '*') {
             adv(L, 2);
             for (;;) {
                 if (L->cur >= L->end) return E_COMMENT;
-                if (*L->cur == '*' && peek_byte(L, 1) == '/') { adv(L, 2); break; }
-                adv(L, 1);
+                c = peekc(L, &n);
+                if (c == 0xFFFFFFFFu) return 0;
+                if (c == '*' && peek_byte(L, 1) == '/') { adv(L, 2); break; }
+                adv(L, n);
             }
             continue;
         }
@@ -155,10 +162,14 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
     const u8 *s = L->cur;
     adv(L, 1);
     for (;;) {
-        int b = peek_byte(L, 0);
-        if (b < 0 || b == '\n') return mk(L, T_ERROR, s, line, col, E_STR);
-        if (b == '"') { adv(L, 1); return mk(L, T_STRING, s, line, col, 0); }
-        if (b == '\\') {
+        u32 n, c = peekc(L, &n);
+        if (n == 0 || c == '\n') return mk(L, T_ERROR, s, line, col, E_STR);
+        if (c == 0xFFFFFFFFu) {
+            adv(L, 1); /* make progress; reject malformed UTF-8 within strings */
+            return mk(L, T_ERROR, s, line, col, E_CHAR);
+        }
+        if (c == '"') { adv(L, 1); return mk(L, T_STRING, s, line, col, 0); }
+        if (c == '\\') {
             int e = peek_byte(L, 1);
             if (e != 'n' && e != 't' && e != 'r' && e != '0' && e != '\\' && e != '"') {
                 adv(L, 1);
@@ -168,7 +179,7 @@ static Token lex_string(Lexer *L, u32 line, u32 col) {
             }
             adv(L, 2); continue;
         }
-        adv(L, 1);
+        adv(L, n);
     }
 }
 
@@ -226,7 +237,15 @@ static char obuf[1 << 16];
 static u32 olen;
 static void oflush(void) {
     u32 off = 0;
-    while (off < olen) { i64 w = sys3(SYS_write, 1, (i64)(obuf + off), olen - off); if (w <= 0) break; off += (u32)w; }
+    while (off < olen) {
+        i64 w = sys3(SYS_write, 1, (i64)(obuf + off), olen - off);
+        if (w <= 0) {
+            /* Raw syscalls do not set errno; never report partial output as success. */
+            sys3(SYS_exit, 3, 0, 0);
+            for (;;) {}
+        }
+        off += (u32)w;
+    }
     olen = 0;
 }
 static void oput(const u8 *s, u32 n) { while (n--) { if (olen == sizeof obuf) oflush(); obuf[olen++] = (char)*s++; } }
@@ -257,7 +276,7 @@ static int morph_separator(u32 c) {
         c == '=' || c == '+' || c == '*' || c == 0x60C || c == 0x61B || c == 0x61F ||
         c == 0x200E || c == 0x200F || c == 0x61C;
 }
-static int dump_word(const u8 *start, u32 len, u32 line, u32 col, const char *kind) {
+static int dump_word(const u8 *start, u32 len, u32 line, u32 col, const char *kind, int strict) {
     static MorphResult result;
     MorphStatus status = morph_analyze(start, len, &result);
     u32 i, j;
@@ -280,7 +299,8 @@ static int dump_word(const u8 *start, u32 len, u32 line, u32 col, const char *ki
         }
         ostr("\n");
     }
-    return status != MORPH_OK;
+    /* TOO_LONG is a nonfatal annotation limit for valid programming identifiers. */
+    return status != MORPH_OK && (strict || status != MORPH_TOO_LONG);
 }
 
 /* Raw-text word segmentation does not alter programming-language tokenization. */
@@ -293,7 +313,7 @@ static int dump_morph(const u8 *src, u64 len) {
         if (morph_separator(c)) { adv(&l, n); continue; }
         start = l.cur; line = l.line; col = l.col;
         do { adv(&l, n); c = peekc(&l, &n); } while (n && !morph_separator(c));
-        errors += dump_word(start, (u32)(l.cur - start), line, col, "WORD");
+        errors += dump_word(start, (u32)(l.cur - start), line, col, "WORD", 1);
     }
     return errors;
 }
@@ -343,7 +363,7 @@ __attribute__((noreturn, used)) static void niyah_main(long argc, char **argv) {
         if (t.kind == T_ERROR) { ostr("\t"); ostr(lex_errmsg(t.value)); errs++; }
         ostr("\n");
         if (annotate_mode && t.kind == T_IDENT)
-            errs += dump_word(t.start, t.len, t.line, t.col, "IDENT_MORPH");
+            errs += dump_word(t.start, t.len, t.line, t.col, "IDENT_MORPH", 0);
     } while (t.kind != T_EOF);
     oflush();
     sys3(SYS_exit, errs ? 2 : 0, 0, 0);

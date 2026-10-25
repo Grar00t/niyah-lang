@@ -32,3 +32,36 @@ These are candidate annotations; they do not establish actual grammatical meanin
 - Invalid UTF-8 fails. Input >96 base code points returns a raw fallback and
   TOO_LONG. At most 64 analyses per word; truncation is signalled.
 - No parser, type checker, code generator or ELF compiler implementation yet.
+
+## Identifier and model-tokenizer distinction
+
+The lexer makes one T_IDENT token for a valid Niyah identifier even when it
+has several Arabic root/clitic candidates. Morphological output does not
+change that token's byte range, spelling, keyword status or identity.
+The optional --annotate display is a diagnostic adjunct, not a compiler phase.
+
+Code-point columns in M0 are Unicode scalar offsets, not grapheme clusters:
+combining shadda or harakat may share a displayed cluster with a base.
+UTF-8 validity is enforced inside comments and string literals as well as
+ordinary code. Format controls accepted between code tokens can still
+confuse bidirectional presentation, and tatweel or decomposed spellings can
+produce visually similar but byte-distinct identifiers. Do not treat raw
+code-point columns as guaranteed cursor positions in every editor.
+
+This is not BPE, SentencePiece, UnigramLM or a neural model tokenizer. Most
+modern subword tokenizers preserve UTF-8 text reversibly but can split Arabic
+words into many units; validating UTF-8 does not solve token efficiency or
+contextual Arabic morphology. No model benchmark is claimed.
+
+The bounded morphology is heuristic and emits alternatives, not unique
+semantics. Future lexicon integration requires a versioned license-proven
+dataset with recorded provenance and independently evaluated gold labels.
+See docs/RESEARCH_2026-10-25.md.
+
+The standalone CLI exits nonzero on failed stdout writes (including /dev/full),
+so downstream file pipelines do not silently accept truncated token output.
+
+An identifier longer than the morphology limit is still a valid lexer token.
+In --annotate mode, TOO_LONG is shown with the intact raw fallback and
+truncated=1 but does not make the lexical scan fail. In --morph raw-text mode,
+TOO_LONG remains a nonzero exit so callers can reject incomplete analyses.

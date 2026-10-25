@@ -1,8 +1,7 @@
 name: M0 lexer verification
 
+# Manual-only. All acceptance tests run locally; do not launch billed CI on pushes.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:

@@ -23,10 +23,11 @@ Requires only a C11 compiler (stage0) and `make`.
 ```
 make            # builds ./niyahlex (freestanding, static, no libc)
 make test       # dumps tokens for examples/مرحبا.نيّة
-make test | diff - tests/lex/مرحبا.expected   # note: strip the make echo lines first
+make verify-local    # full offline verification, including available sanitizers
 ./niyahlex FILE             # language tokens; exit 0 ok, 1 I/O error, 2 lex error
 ./niyahlex --morph FILE     # Arabic raw-text candidate segmentation
 ./niyahlex --annotate FILE  # language tokens + identifier candidates
+# GitHub Actions is manual-only to avoid billing. Local testing is authoritative.
 ```
 
 ## Layout

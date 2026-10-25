@@ -1,6 +1,13 @@
 # Milestones
 
 ## M0 Lexer
+
+**Implemented and locally verified (2026-10-25).** Exact golden lexer output,
+malformed UTF-8 inside strings/comments, numeric and keyword boundaries,
+5,000 fixed-seed morphology byte cases, 4 MiB input limit, and an opt-in
+morphological annotation mode are covered by make test / make verify-local.
+No trained NLP tokenizer, dictionary-based disambiguator, or M1 implementation
+is implied. CI is intentionally manual-only to avoid paid GitHub Actions runs.
 - Input: `examples/مرحبا.نيّة`.
 - Output: one line per token `line:col KIND text [=value]`; exit 0. Exit 2 if any T_ERROR.
 - Done: `make test` prints the expected token stream; `nm niyahlex | grep ' U '` empty; `ldd niyahlex` reports not dynamic; golden file in `tests/lex/` byte-equal.
