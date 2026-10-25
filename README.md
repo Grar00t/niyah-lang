@@ -12,7 +12,9 @@ Self-hosting compiler for نيّة (Niyah), a statically typed language with Ara
 
 ## Status
 
-M0 (lexer) implemented. Everything else: see `docs/milestones.md`.
+M0 (lexer) implemented, plus a bounded Arabic morphology candidate analyzer.
+This optional word/identifier annotation aid is not an NLP model tokenizer or compiler.
+M1 (parser) and later stages are unimplemented; see docs/tokenizer.md and docs/milestones.md.
 
 ## Build
 
@@ -22,7 +24,9 @@ Requires only a C11 compiler (stage0) and `make`.
 make            # builds ./niyahlex (freestanding, static, no libc)
 make test       # dumps tokens for examples/مرحبا.نيّة
 make test | diff - tests/lex/مرحبا.expected   # note: strip the make echo lines first
-./niyahlex FILE # tokens of FILE; exit 0 ok, 1 I/O error, 2 lex error
+./niyahlex FILE             # language tokens; exit 0 ok, 1 I/O error, 2 lex error
+./niyahlex --morph FILE     # Arabic raw-text candidate segmentation
+./niyahlex --annotate FILE  # language tokens + identifier candidates
 ```
 
 ## Layout
