@@ -25,3 +25,7 @@ core.*
 .idea/
 *.swp
 compile_commands.json
+
+# locally compiled unit-test executables
+tests/lexer_test
+tests/morph_test
