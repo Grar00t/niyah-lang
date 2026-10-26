@@ -50,6 +50,18 @@ static void bad(const char *name, const char *s) {
         failed++;
     }
 }
+static void bad_multi(const char *name, const char *s, u32 want_min) {
+    Parser p;
+    u32 root = parse(s, &p);
+    if (root || !p.error) {
+        fprintf(stderr, "FAIL not rejected: %s\n", name); failed++; return;
+    }
+    if (p.error_count < want_min) {
+        fprintf(stderr, "FAIL only %u diagnostics, want >=%u: %s\n",
+                p.error_count, want_min, name);
+        failed++;
+    }
+}
 static void test_priority(void) {
     static const char code[] = "دالة رئيسية() -> صحيح { أرجع ٢ + ٣ * ٤؛ }";
     Parser p;
@@ -237,6 +249,10 @@ int main(void) {
     bad("const empty initializer", "ثابت س: صحيح = ؛");
     bad("var empty initializer", "متغير س: صحيح = ؛");
     bad("empty while condition", "دالة د() { طالما () {} }");
+    bad_multi("two missing semicolons",
+              "دالة د() { أرجع ١ } دالة ه() { أرجع ٢ }", 2);
+    bad_multi("two missing names",
+              "دالة () {} دالة () {}", 2);
     test_priority();
     test_left_associativity();
     test_invalid_init();
@@ -247,6 +263,6 @@ int main(void) {
     parser_init(&p, arena, CAP, empty, 0);
     if (!parser_parse(&p) || p.error) failed++;
     if (failed) return 1;
-    puts("parser_test: 30 valid, 30 invalid, AST invariants, 3000 byte cases PASS");
+    puts("parser_test: 30 valid, 30 invalid, 2 multi-error, AST invariants, 3000 byte cases PASS");
     return 0;
 }

@@ -12,6 +12,7 @@ const char *ast_name(AstKind k) {
 }
 
 static u32 fail(Parser *p, const char *reason) {
+    p->error_count++;
     if (!p->error) {
         p->error = p->look.kind == T_ERROR ? "lexical error" : reason;
         p->error_at = p->look;
@@ -55,6 +56,14 @@ static int child(Parser *p, u32 parent, u32 id) {
     return 1;
 }
 
+/* Skip tokens until a statement boundary; caller guarantees look not EOF/RBRACE. */
+static void synchronize(Parser *p) {
+    while (p->look.kind != T_EOF && p->look.kind != T_RBRACE) {
+        if (p->look.kind == T_SEMI) { take(p); return; }
+        take(p);
+    }
+}
+
 void parser_init(Parser *p, AstNode *arena, u32 capacity, const u8 *src, u64 len) {
     *p = (Parser){0};
     p->nodes = arena;
@@ -62,6 +71,7 @@ void parser_init(Parser *p, AstNode *arena, u32 capacity, const u8 *src, u64 len
     p->count = 1; /* 0 is an absent child */
     if (!arena || capacity < 2 || !src || len > 0xFFFFFFFFu) {
         p->error = "invalid parser arguments";
+        p->error_count = 1;
         return;
     }
     lex_init(&p->lex, src, len);
@@ -364,6 +374,11 @@ static u32 parse_block(Parser *p) {
     result = node(p, A_BLOCK, tok);
     while (result && p->look.kind != T_RBRACE && p->look.kind != T_EOF) {
         statement = parse_stmt(p);
+        if (!statement) {
+            if (p->look.kind == T_RBRACE || p->look.kind == T_EOF) break;
+            synchronize(p);
+            continue;
+        }
         if (!child(p, result, statement)) { result = 0; break; }
     }
     if (result && !need(p, T_RBRACE, "expected '}' after block")) result = 0;
@@ -383,7 +398,20 @@ u32 parser_parse(Parser *p) {
         case K_FUNC: decl = parse_function(p); break;
         case K_STRUCT: decl = parse_struct(p); break;
         case K_VAR: case K_CONST: decl = parse_variable(p); break;
-        default: return fail(p, "expected top-level declaration");
+        default:
+            fail(p, "expected top-level declaration");
+            decl = 0;
+            break;
+        }
+        if (!decl) {
+            if (p->look.kind == T_EOF) break;
+            take(p);
+            while (p->look.kind != T_EOF &&
+                   p->look.kind != K_FUNC && p->look.kind != K_STRUCT &&
+                   p->look.kind != K_VAR && p->look.kind != K_CONST) {
+                take(p);
+            }
+            continue;
         }
         if (!child(p, result, decl)) return 0;
     }

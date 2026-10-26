@@ -27,6 +27,7 @@ typedef struct {
     Token look, error_at;
     AstNode *nodes;
     u32 count, capacity, depth;   /* node 0 is reserved */
+    u32 error_count;               /* number of diagnostics recorded */
     const char *error;
 } Parser;
 
