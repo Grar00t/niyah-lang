@@ -16,21 +16,22 @@ M1 status is tracked separately below. CI is manual-only to avoid paid runs.
 
 ## M1 Parser + AST dump
 
-First functional slice implemented (2026-10-25), not the final milestone.
-The parser accepts declarations, functions, structs, parameters, pointer and
-array types, blocks, conditions, loops, returns, assignments, calls, index,
-member access, and defined operator precedence.
+M1 syntax parser implemented; acceptance expanded (2026-10-27).
+It recognizes declarations, functions, structs, types, blocks, if/else-if,
+while, returns, assignments, calls, indexing and operator precedence.
 
-The source produces an indented AST with 1-based arena indices, not the
-originally proposed S-expression/round-trip serializer. The standalone
-niyahparse validates syntax and returns 2 on an error, no machine code.
-Verified: 8 positive and 15 negative fixtures, one golden AST, 3,000 seeded
-byte cases, AST structural invariants, arena and block/else-if depth limits,
-CLI input bounds; GCC ASan/UBSan and ordinary Clang tests.
+`niyahparse --ast` is a human-readable indented dump. Separately, the C
+APIs `ast_serialize` and `ast_deserialize` support an internal canonical
+shape/payload format with 8 round-trip tests; they do not retain original
+source locations. AST node indices differ legitimately across builds.
+Limited statement-level multi-error recovery passes 2 explicit fixtures.
 
-Remaining M1 acceptance gates: 30 positive/30 negative golden fixtures,
-multi-error recovery, AST dump/reparse round trip, larger project fixtures.
-These have NOT been met. No M2 type checking is implemented.
+Verified locally: 30 inline valid / 30 inline invalid syntax cases, 3,000
+arbitrary parser-byte cases, 2,000 malformed serialized-AST byte cases,
+8 AST round-trips, structural equality, numeric values and bounded depth,
+GCC ASan/UBSan and ordinary Clang checks, static ELF64, old goldens.
+Not yet achieved: 30/30 separate golden fixture files, comprehensive error
+recovery, source-level AST dump/reparse, real compiler and M2 typing.
 
 
 ## M2 Type checker

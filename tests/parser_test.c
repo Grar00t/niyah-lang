@@ -62,6 +62,177 @@ static void bad_multi(const char *name, const char *s, u32 want_min) {
         failed++;
     }
 }
+
+static int tr_has_payload(AstKind k) {
+    switch (k) {
+    case A_FUNC: case A_STRUCT: case A_PARAM: case A_FIELD:
+    case A_VAR: case A_CONST: case A_NAME: case A_MEMBER:
+    case A_TYPE_NAME: case A_TYPE_ARRAY: case A_INT: case A_STRING:
+    case A_BINARY: case A_UNARY: case A_ASSIGN:
+        return 1;
+    default: return 0;
+    }
+}
+static int tr_is_tokkind(AstKind k) {
+    return k == A_BINARY || k == A_UNARY || k == A_ASSIGN;
+}
+/* Arena allocation order is not AST traversal order: comparing node indices
+ * rejects equivalent trees when a parent is allocated after its children.
+ * Compare paired nodes by ordered child traversal, never raw node IDs. */
+typedef struct { u32 left, right; } TreePair;
+static int trees_match(const Parser *a, u32 ra, const Parser *b, u32 rb) {
+    TreePair todo[CAP];
+    u8 visited_a[CAP] = {0}, visited_b[CAP] = {0};
+    u32 top = 0, checked = 0;
+    if (!a || !b || !a->nodes || !b->nodes ||
+        !ra || !rb || a->count != b->count || a->count > CAP ||
+        ra >= a->count || rb >= b->count) return 0;
+    todo[top++] = (TreePair){ra, rb};
+    while (top) {
+        TreePair pair = todo[--top];
+        u32 ac, bc, last_a = 0, last_b = 0;
+        const AstNode *an, *bn;
+        if (!pair.left || !pair.right ||
+            pair.left >= a->count || pair.right >= b->count ||
+            visited_a[pair.left] || visited_b[pair.right]) return 0;
+        visited_a[pair.left] = visited_b[pair.right] = 1;
+        checked++;
+        an = &a->nodes[pair.left];
+        bn = &b->nodes[pair.right];
+        if (an->kind != bn->kind) return 0;
+        if (tr_is_tokkind(an->kind)) {
+            if (an->tok.kind != bn->tok.kind) return 0;
+        } else if (tr_has_payload(an->kind)) {
+            if (an->tok.len != bn->tok.len) return 0;
+            if (an->tok.len &&
+                (!an->tok.start || !bn->tok.start ||
+                 memcmp(an->tok.start, bn->tok.start, an->tok.len))) return 0;
+            /* Numeric literals must retain their evaluated value too. */
+            if ((an->kind == A_INT || an->kind == A_TYPE_ARRAY) &&
+                an->tok.value != bn->tok.value) return 0;
+        }
+        ac = an->first;
+        bc = bn->first;
+        while (ac && bc) {
+            if (ac >= a->count || bc >= b->count || top >= CAP) return 0;
+            todo[top++] = (TreePair){ac, bc};
+            last_a = ac; last_b = bc;
+            ac = a->nodes[ac].next;
+            bc = b->nodes[bc].next;
+        }
+        if (ac || bc || an->last != last_a || bn->last != last_b) return 0;
+    }
+    return checked == a->count - 1;
+}
+static void test_roundtrip(void) {
+    static const char *const cases[] = {
+        "دالة رئيسية() { أرجع ٤٢؛ }",
+        "دالة د(س: صحيح، ص: *صحيح) { إذا (س) { أرجع؛ } }",
+        "هيكل ه { س: صحيح؛ ص: [٣]*صحيح؛ }",
+        "دالة د() { أرجع س | ص ^ ع & ١؛ }",
+        "متغير س: صحيح = ١ + ٢ * ٣؛",
+        "دالة د() { طالما (س < ١٠ && ص > ٠) { س = س + ١؛ } }",
+        "دالة د() { أرجع ١ + ٢ * ٣ == ٤ && ٥؛ }",
+        "دالة د() { أرجع \"س\\\"ص\\\\ع\"؛ }"
+    };
+    char out1[8192], out2[8192];
+    u8 pbuf[8192];
+    static AstNode arena2[256];
+    u32 ncases = (u32)(sizeof cases / sizeof cases[0]);
+    for (u32 i = 0; i < ncases; i++) {
+        Parser p1, p2;
+        u32 root1, root2, n1, n2;
+        parser_init(&p1, arena, CAP, (const u8 *)cases[i], (u64)strlen(cases[i]));
+        root1 = parser_parse(&p1);
+        if (!root1) { fprintf(stderr, "FAIL roundtrip[%u] parse\n", i); failed++; continue; }
+        n1 = ast_serialize(&p1, root1, out1, sizeof out1);
+        if (!n1) { fprintf(stderr, "FAIL roundtrip[%u] serialize\n", i); failed++; continue; }
+        root2 = ast_deserialize(&p2, arena2, 256, pbuf, sizeof pbuf, out1, n1);
+        if (!root2) { fprintf(stderr, "FAIL roundtrip[%u] deserialize\n", i); failed++; continue; }
+        n2 = ast_serialize(&p2, root2, out2, sizeof out2);
+        if (!n2 || n2 != n1 || memcmp(out1, out2, n1) != 0) {
+            fprintf(stderr, "FAIL roundtrip[%u] text mismatch\n", i); failed++; continue;
+        }
+        if (!trees_match(&p1, root1, &p2, root2)) {
+            fprintf(stderr, "FAIL roundtrip[%u] tree mismatch\n", i); failed++;
+        }
+    }
+}
+/* Invalid serializations must fail, not silently synthesize broken ASTs. */
+static void test_ast_rejection(void) {
+    static AstNode other[512];
+    static u8 payload[8192];
+    static char deep[2048], fuzzbuf[256];
+    static const char *const invalid[] = {
+        "(", "(PROGRAM", "(PROGRAM) trailing",
+        "(PROGRAM (NAME \"unterminated))",
+        "(PROGRAM (BINARY \"INVALID\"))",
+        "(PROGRAM (BINARY \"=\"))",
+        "(PROGRAM (ASSIGN \"+\"))",
+        "(PROGRAM (UNARY \"==\"))",
+        "(PROGRAM (INT \"123x\"))",
+        "(PROGRAM (INT \"nope\"))",
+        "(PROGRAM (NAME \"إذا\"))",
+        "(PROGRAM (NAME \"a\\q\"))",
+        "(PROGRAM (NAME \"\xED\"))"
+    };
+    Parser p, d;
+    char output[8192];
+    static const char source[] = "دالة د() { أرجع ٩؛ }";
+    u32 n, root, old_first, i, used;
+    parser_init(&p, arena, CAP, (const u8 *)source, sizeof source - 1);
+    root = parser_parse(&p);
+    if (!root) { fprintf(stderr, "FAIL fixture for AST guards\n"); failed++; return; }
+    n = ast_serialize(&p, root, output, sizeof output);
+    if (!n || ast_serialize(&p, root, output, n - 1) ||
+        ast_serialize(&p, root, NULL, n) ||
+        ast_deserialize(&d, NULL, 0, payload, sizeof payload, output, n) ||
+        !d.error || ast_deserialize(NULL, other, 512, payload, sizeof payload, output, n)) {
+        fprintf(stderr, "FAIL AST API argument and buffer checks\n"); failed++;
+    }
+    for (i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        if (ast_deserialize(&d, other, 512, payload, sizeof payload,
+                            invalid[i], (u32)strlen(invalid[i])) || !d.error) {
+            fprintf(stderr, "FAIL invalid serialized AST %u\n", i); failed++;
+        }
+    }
+    used = 0;
+    memcpy(deep + used, "(PROGRAM", 8); used += 8;
+    for (i = 0; i < 150; i++) {
+        memcpy(deep + used, " (BLOCK", 7); used += 7;
+    }
+    for (i = 0; i < 151; i++) deep[used++] = ')';
+    if (ast_deserialize(&d, other, 512, payload, sizeof payload, deep, used) ||
+        !d.error) {
+        fprintf(stderr, "FAIL unbounded serialized tree depth\n"); failed++;
+    }
+    old_first = arena[root].first;
+    arena[root].first = root; /* Cannot serialize cyclic AST graphs. */
+    if (ast_serialize(&p, root, output, sizeof output)) {
+        fprintf(stderr, "FAIL cyclic AST serialization\n"); failed++;
+    }
+    arena[root].first = old_first;
+    {
+        u32 seed = 0x334AC1u;
+        for (i = 0; i < 2000; i++) {
+            u32 k, size = i % sizeof fuzzbuf;
+            for (k = 0; k < size; k++) {
+                seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
+                fuzzbuf[k] = (char)seed;
+            }
+            root = ast_deserialize(&d, other, 512, payload,
+                                   sizeof payload, fuzzbuf, size);
+            if (root) {
+                if (!ast_serialize(&d, root, output, sizeof output)) {
+                    fprintf(stderr, "FAIL parsed random AST cannot serialize %u\n", i);
+                    failed++;
+                }
+            } else if (!d.error) {
+                fprintf(stderr, "FAIL fuzz AST missing error %u\n", i); failed++;
+            }
+        }
+    }
+}
 static void test_priority(void) {
     static const char code[] = "دالة رئيسية() -> صحيح { أرجع ٢ + ٣ * ٤؛ }";
     Parser p;
@@ -253,6 +424,8 @@ int main(void) {
               "دالة د() { أرجع ١ } دالة ه() { أرجع ٢ }", 2);
     bad_multi("two missing names",
               "دالة () {} دالة () {}", 2);
+    test_roundtrip();
+    test_ast_rejection();
     test_priority();
     test_left_associativity();
     test_invalid_init();
@@ -263,6 +436,6 @@ int main(void) {
     parser_init(&p, arena, CAP, empty, 0);
     if (!parser_parse(&p) || p.error) failed++;
     if (failed) return 1;
-    puts("parser_test: 30 valid, 30 invalid, 2 multi-error, AST invariants, 3000 byte cases PASS");
+    puts("parser_test: 30 valid, 30 invalid, 2 multi-error, 8 roundtrip, 2000 serialized byte cases, AST hardening, AST invariants, 3000 byte cases PASS");
     return 0;
 }

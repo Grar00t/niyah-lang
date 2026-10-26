@@ -1,6 +1,6 @@
 # niyah-lang
 
-Self-hosting compiler for نيّة (Niyah), a statically typed language with Arabic keywords. C + x86-64 asm. Zero dependencies.
+Target: self-hosting compiler for نيّة (Niyah), a statically typed language with Arabic keywords. Current implementation: C11 M0 lexer and M1 parser. No generated native program yet.
 
 ## Project statement
 
@@ -17,6 +17,12 @@ candidate analysis. M1 has a working syntax parser and arena-backed AST.
 This is NOT yet a native Niyah compiler: M2 type checking, IR, code
 generation, executable emission and self-hosting remain unimplemented.
 Morphology never changes programming-language identifier identity.
+
+M1 now has 30 positive / 30 negative syntax fixtures, two multi-error
+recovery tests, and eight canonical AST serialize/deserialize round-trips.
+The internal C API retains AST structure and integer values but not original
+source positions. This is separate from the human-readable CLI `--ast`
+output; neither format can recreate the original source file.
 
 ## Build
 

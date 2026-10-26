@@ -417,3 +417,206 @@ u32 parser_parse(Parser *p) {
     }
     return p->error ? 0 : result;
 }
+
+/* ---- AST canonical serialization (dump/reparse round-trip) ---- */
+
+static u32 rt_len(const char *s) { u32 n = 0; while (s[n]) n++; return n; }
+static int rt_eq(const char *a, const char *b, u32 n) {
+    for (u32 i = 0; i < n; i++) if (a[i] != b[i]) return 0;
+    return 1;
+}
+static int kind_has_payload(AstKind k) {
+    switch (k) {
+    case A_FUNC: case A_STRUCT: case A_PARAM: case A_FIELD:
+    case A_VAR: case A_CONST: case A_NAME: case A_MEMBER:
+    case A_TYPE_NAME: case A_TYPE_ARRAY: case A_INT: case A_STRING:
+    case A_BINARY: case A_UNARY: case A_ASSIGN:
+        return 1;
+    default: return 0;
+    }
+}
+static int kind_payload_is_tokkind(AstKind k) {
+    return k == A_BINARY || k == A_UNARY || k == A_ASSIGN;
+}
+static TokKind tok_kind_from_name(const char *name, u32 len) {
+    for (int k = 0; k < (int)T_COUNT; k++) {
+        const char *n = tok_name((TokKind)k);
+        if (rt_len(n) == len && rt_eq(n, name, len)) return (TokKind)k;
+    }
+    return T_EOF;
+}
+
+typedef struct { char *out; u32 cap, len; int failed; } EmitCtx;
+static void em(EmitCtx *c, const char *s, u32 n) {
+    if (c->failed) return;
+    if (n > c->cap - c->len) { c->failed = 1; return; }
+    for (u32 i = 0; i < n; i++) c->out[c->len++] = s[i];
+}
+static void ems(EmitCtx *c, const char *s) { em(c, s, rt_len(s)); }
+static void emq(EmitCtx *c, const u8 *s, u32 n) {
+    em(c, "\"", 1);
+    for (u32 i = 0; i < n; i++) {
+        if (s[i] == '"' || s[i] == '\\') em(c, "\\", 1);
+        em(c, (const char *)&s[i], 1);
+    }
+    em(c, "\"", 1);
+}
+static void em_node(EmitCtx *c, const Parser *p, u32 id, u32 depth) {
+    const AstNode *n;
+    u32 child, siblings = 0;
+    if (c->failed) return;
+    if (!id || id >= p->count || depth >= NIYAH_PARSE_MAX_DEPTH) {
+        c->failed = 1; return;
+    }
+    n = &p->nodes[id];
+    if (n->kind <= A_NONE || n->kind > A_STRING) { c->failed = 1; return; }
+    em(c, "(", 1);
+    ems(c, ast_name(n->kind));
+    if (kind_has_payload(n->kind)) {
+        em(c, " ", 1);
+        if (kind_payload_is_tokkind(n->kind)) {
+            const char *tn = tok_name(n->tok.kind);
+            emq(c, (const u8 *)tn, rt_len(tn));
+        } else if (n->tok.start && n->tok.len) {
+            emq(c, n->tok.start, n->tok.len);
+        } else {
+            em(c, "\"\"", 2);
+        }
+    }
+    child = n->first;
+    while (child && !c->failed) {
+        if (child >= p->count || ++siblings >= p->count) {
+            c->failed = 1; return;
+        }
+        em(c, " ", 1);
+        em_node(c, p, child, depth + 1);
+        child = p->nodes[child].next;
+    }
+    em(c, ")", 1);
+}
+u32 ast_serialize(const Parser *p, u32 root, char *out, u32 cap) {
+    EmitCtx c = { out, cap, 0, 0 };
+    if (!p || !p->nodes || !out || !cap ||
+        p->count > p->capacity || !root || root >= p->count) return 0;
+    em_node(&c, p, root, 0);
+    if (c.failed) return 0;
+    return c.len;
+}
+
+typedef struct {
+    const char *text; u32 pos, len;
+    u8 *pay; u32 pay_cap, pay_used;
+} DesCtx;
+
+static void dsws(DesCtx *c) {
+    while (c->pos < c->len) {
+        char ch = c->text[c->pos];
+        if (ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t') c->pos++;
+        else return;
+    }
+}
+static int dskind(DesCtx *c, AstKind *out) {
+    u32 start = c->pos;
+    while (c->pos < c->len && c->text[c->pos] != ' ' && c->text[c->pos] != '(' &&
+           c->text[c->pos] != ')' && c->text[c->pos] != '\n' &&
+           c->text[c->pos] != '\r' && c->text[c->pos] != '\t') c->pos++;
+    u32 n = c->pos - start;
+    for (int k = 1; k <= (int)A_STRING; k++) {
+        const char *name = ast_name((AstKind)k);
+        if (rt_len(name) == n && rt_eq(name, c->text + start, n)) {
+            *out = (AstKind)k; return 1;
+        }
+    }
+    return 0;
+}
+static int dsq(DesCtx *c, u32 *so, u32 *sl) {
+    if (c->pos >= c->len || c->text[c->pos] != '"') return 0;
+    c->pos++;
+    u32 start = c->pay_used;
+    while (c->pos < c->len) {
+        char ch = c->text[c->pos++];
+        if (ch == '"') { *so = start; *sl = c->pay_used - start; return 1; }
+        if (ch == '\\') {
+            if (c->pos >= c->len) return 0;
+            ch = c->text[c->pos++];
+            if (ch != '\\' && ch != '"') return 0;
+        }
+        if (c->pay_used >= c->pay_cap) return 0;
+        c->pay[c->pay_used++] = (u8)ch;
+    }
+    return 0;
+}
+static u32 ds_node(DesCtx *c, Parser *p, u32 depth) {
+    AstKind kind;
+    u32 ts = 0, tl = 0, id, prev = 0, child;
+    if (depth >= NIYAH_PARSE_MAX_DEPTH) return 0;
+    dsws(c);
+    if (c->pos >= c->len || c->text[c->pos] != '(') return 0;
+    c->pos++;
+    dsws(c);
+    if (!dskind(c, &kind)) return 0;
+    if (kind_has_payload(kind)) {
+        dsws(c);
+        if (!dsq(c, &ts, &tl)) return 0;
+    }
+    if (p->count >= p->capacity) return 0;
+    id = p->count++;
+    p->nodes[id] = (AstNode){0};
+    p->nodes[id].kind = kind;
+    if (kind_has_payload(kind)) {
+        if (kind_payload_is_tokkind(kind)) {
+            TokKind op = tok_kind_from_name((const char *)(c->pay + ts), tl);
+            if ((kind == A_BINARY && !prec(op)) ||
+                (kind == A_ASSIGN && op != T_ASSIGN) ||
+                (kind == A_UNARY && op != T_MINUS && op != T_BANG &&
+                 op != T_TILDE && op != T_STAR && op != T_AMP)) return 0;
+            p->nodes[id].tok.kind = op;
+        } else {
+            /* Recover numeric value and token kind, not just the source bytes.
+             * Invalid UTF-8, bad escapes and noncanonical payloads fail closed. */
+            Lexer lexer;
+            Token tok;
+            TokKind want = kind == A_INT || kind == A_TYPE_ARRAY ? T_INT :
+                           kind == A_STRING ? T_STRING : T_IDENT;
+            if (!tl) return 0;
+            lex_init(&lexer, c->pay + ts, tl);
+            tok = lex_next(&lexer);
+            if (tok.kind != want || tok.start != c->pay + ts ||
+                tok.len != tl || lex_next(&lexer).kind != T_EOF) return 0;
+            p->nodes[id].tok = tok;
+        }
+    }
+    while (1) {
+        dsws(c);
+        if (c->pos >= c->len) return 0;
+        if (c->text[c->pos] == ')') { c->pos++; break; }
+        child = ds_node(c, p, depth + 1);
+        if (!child) return 0;
+        if (!prev) p->nodes[id].first = child;
+        else p->nodes[prev].next = child;
+        p->nodes[id].last = child;
+        prev = child;
+    }
+    return id;
+}
+u32 ast_deserialize(Parser *p, AstNode *arena, u32 cap,
+                    u8 *payload, u32 payload_cap,
+                    const char *text, u32 text_len) {
+    DesCtx c = { text, 0, text_len, payload, payload_cap, 0 };
+    u32 root;
+    if (!p) return 0;
+    *p = (Parser){0};
+    if (!arena || cap < 2 || (!payload && payload_cap) ||
+        !text || !text_len) {
+        p->error = "invalid deserialize arguments";
+        return 0;
+    }
+    p->nodes = arena;
+    p->capacity = cap;
+    p->count = 1;
+    root = ds_node(&c, p, 0);
+    if (!root) { p->error = "deserialize failed"; return 0; }
+    dsws(&c);
+    if (c.pos != c.len) { p->error = "trailing data"; return 0; }
+    return root;
+}

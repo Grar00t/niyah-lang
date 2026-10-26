@@ -37,4 +37,14 @@ void parser_init(Parser *p, AstNode *arena, u32 capacity,
 u32 parser_parse(Parser *p);
 const char *ast_name(AstKind kind);
 
+/* Canonical AST shape/payload format, not original source serialization.
+ * ast_deserialize borrows the caller-owned payload buffer (and AST arena).
+ * Token lexemes, kinds and integer values survive; original line/col do not.
+ * On failure return 0; deserialization sets p->error when p is not NULL.
+ * Both operations have bounded depth; neither performs M2 semantic analysis. */
+u32 ast_serialize(const Parser *p, u32 root, char *out, u32 cap);
+u32 ast_deserialize(Parser *p, AstNode *arena, u32 cap,
+                    u8 *payload, u32 payload_cap,
+                    const char *text, u32 text_len);
+
 #endif

@@ -1,21 +1,26 @@
 # Niyah architecture
 
-## Implemented boundary (2026-10-25)
+## Implemented boundary (updated 2026-10-27)
 
-M0 is implemented: freestanding C11 lexer and optional morphology that does
-not rewrite language tokens or byte-exact identifier identity. M1 has a
-functioning recursive-descent syntax parser and arena-backed AST: declarations,
-functions, structs, parameters, types, control flow, assignments, expression
-precedence, calls, indexing and field access. A 16,384-node static arena
-and 128-frame recursion limit bound the standalone implementation.
-Parser errors fail fast; multi-error synchronization is NOT implemented.
-The niyahparse CLI is static ELF64 with raw syscalls, no libc.
+M0: freestanding C11 lexer and optional Arabic morphology annotation that
+never rewrites a programming-language token or identifier. M1: recursive-
+descent syntax parser, 1-based arena AST, bounded statement-boundary
+multi-error recovery, and canonical AST serialize/deserialize C APIs.
+The parser supports declarations, functions, structs, types, control flow
+and precedence. The standalone `niyahparse` is static Linux x86-64 ELF64,
+16,384-node arena, 128-frame parse limit, raw syscalls and no libc.
 
-Neither static niyahparse nor niyahlex is a compiler for Niyah programs.
-M1 completion gates (30 positive and 30 negative golden fixtures, plus a
-serialization/reparse round trip) are still open. M2 typing, IR, register
-allocation, codegen, ELF emission and self-hosting are NOT implemented.
-Verification is local: make verify-local. GitHub Actions is manual-only.
+Thirty valid and thirty invalid **inline** syntax cases, two recovery
+cases, eight AST round-trips, AST malformed-input guards, original golden
+token/AST outputs and GCC/Clang local checks pass. Serializer AST node
+indices are allocation details and are NOT canonical identifiers: compare
+ordered tree shapes and payload values. Serialization is not the human-
+readable `--ast` output; source positions are discarded. The remaining
+full standalone golden fixture coverage is not claimed.
+
+Neither tool compiles or executes Niyah source. M2 typing, IR, native
+codegen, ELF program emission and self-hosting remain unimplemented.
+Verification: `make verify-local`; GitHub Actions remains manual-only.
 See docs/M1_PARSER_2026-10-25.md.
 
 **Target compiler architecture, not yet implemented:** single binary, whole-program, one translation unit per run. Input: `.نيّة` files. Output: static ELF64 ET_EXEC. No `as`, no `ld`, no libc.
@@ -29,7 +34,7 @@ source bytes -> lexer -> parser -> AST -> typecheck -> IR (3AC, CFG) -> regalloc
 | Stage | Input | Output | Data structure | Notes |
 |---|---|---|---|---|
 | Lexer | UTF-8 bytes | Token stream (pull, 1-token lookahead) | `Token{kind,line,col,start,len,value}` | Slices into source buffer; no copies. Keywords matched bytewise. |
-| Parser | tokens | AST | Recursive descent, precedence climbing | Implemented: fail-fast one diagnostic, max 128 nested parse frames; error synchronization not yet implemented. |
+| Parser | tokens | AST | Recursive descent, precedence climbing | Implemented: bounded statement-level error synchronization with first-error diagnostic, max 128 nested frames. |
 | AST | parser | flat nodes | 1-based u32 first/last/next child links | Implemented: borrowed source-token slices, fixed arena, ordered children. |
 | Type checker | AST | Typed AST + symbol tables | Scope stack, struct table | Static, strict, no implicit coercion. Every conversion is `T(expr)`. Sizes and field offsets computed here. |
 | IR | typed AST | per-function CFG of basic blocks, 3AC | `Inst{op,dst,a,b,type}` in a flat array; blocks hold index ranges | Non-SSA, virtual registers, explicit loads/stores for address-taken vars. |
