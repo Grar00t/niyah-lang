@@ -22,6 +22,26 @@ Example:
 Inspect CONJ_W + DET_AL + STEM, FUTURE_S + IMPF_Y + STEM and pattern=MAFOOL.
 These are candidate annotations; they do not establish actual grammatical meaning.
 
+### Raw-text word separators
+
+`--morph` recognizes all Unicode 17.0 `White_Space` code points, including
+NBSP (U+00A0), U+0085, U+1680, U+2000..U+200A, U+2028/U+2029,
+narrow NBSP (U+202F), U+205F and U+3000. The existing ASCII control,
+punctuation and ALM/LRM/RLM separators are retained. The property list is
+defined in [Unicode PropList.txt](https://www.unicode.org/Public/17.0.0/ucd/PropList.txt).
+
+Words separated by these characters are analyzed independently; each word's
+original UTF-8 bytes remain intact. No Unicode normalization is performed.
+Zero-width space/joiners, word joiner, interior BOM and U+180E are not added
+as separators. Harakat and tatweel remain inside words. A leading BOM is
+still skipped by the existing input initialization.
+
+This change only affects raw-text `--morph` segmentation. Language tokenization
+and `--annotate` keep their existing rules. Location tracking also keeps the
+existing convention: CR, LF and CRLF advance the line; other separators
+advance the Unicode scalar column. `make test` runs the complete-output
+regressions in `tests/morph_whitespace_test.sh`.
+
 ## Limitations
 
 - The raw word is always candidate zero, intact and byte-exact.
