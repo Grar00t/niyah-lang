@@ -197,6 +197,46 @@ int main(void) {
     bad("bad UTF-8 in string", "دالة د() { أرجع \"\xED\"؛ }");
     bad("no hex digits", "دالة د() { أرجع 0x؛ }");
     bad("double assignment", "دالة د() { س = ص = ع؛ }");
+    /* --- M1 fixture expansion: 22 additional valid cases --- */
+    ok("single param", "دالة د(س: صحيح) { أرجع س؛ }");
+    ok("three params", "دالة د(س: صحيح، ص: بايت، ع: منطقي) {}");
+    ok("return pointer type", "دالة د() -> *صحيح { أرجع ٠؛ }");
+    ok("return array type", "دالة د() -> [٣]صحيح { أرجع؛ }");
+    ok("pointer to pointer", "متغير س: **صحيح؛");
+    ok("array of pointer", "متغير س: [٤]*صحيح؛");
+    ok("pointer to array", "متغير س: *[٤]صحيح؛");
+    ok("if without else", "دالة د() { إذا (س) { أرجع؛ } }");
+    ok("else-if chain deep", "دالة د() { إذا (١) {} وإلا إذا (٢) {} وإلا {} }");
+    ok("while complex condition", "دالة د() { طالما (س < ١٠ && ص > ٠) { س = س + ١؛ } }");
+    ok("bare return", "دالة د() { أرجع؛ }");
+    ok("nested bare blocks", "دالة د() { { { أرجع؛ } } }");
+    ok("bitwise operators", "دالة د() { أرجع س | ص ^ ع & ١؛ }");
+    ok("shift and compare", "دالة د() { أرجع س << ٢ >= ص >> ١؛ }");
+    ok("logical operators", "دالة د() { أرجع س || ص && ع؛ }");
+    ok("equality chain", "دالة د() { أرجع س == ص != ع؛ }");
+    ok("hex literal", "دالة د() { أرجع 0xFF؛ }");
+    ok("struct array-of-pointer field", "هيكل ه { س: صحيح؛ ص: [٣]*صحيح؛ }");
+    ok("top-level var init", "متغير س: صحيح = ١ + ٢ * ٣؛");
+    ok("nested calls", "دالة د() { س(ص(ع))؛ }");
+    ok("calls with 0..3 args", "دالة د() { س()؛ س(١)؛ س(١،٢)؛ س(١،٢،٣)؛ }");
+    ok("member chain and unary", "دالة د() { س.ح.خ؛ أرجع &*س؛ }");
+
+    /* --- M1 fixture expansion: 15 additional invalid cases --- */
+    bad("param missing type", "دالة د(س) {}");
+    bad("param type after colon", "دالة د(س: ) {}");
+    bad("arrow without type", "دالة د() -> {}");
+    bad("unterminated string", "دالة د() { أرجع \"abc؛ }");
+    bad("unterminated block comment", "دالة د() { /* unclosed }");
+    bad("unbalanced open paren", "دالة د() { (١؛ }");
+    bad("unbalanced close paren", "دالة د() { ١)؛ }");
+    bad("two expressions juxtaposed", "دالة د() { أرجع ١ ٢؛ }");
+    bad("trailing comma in params", "دالة د(س: صحيح,) {}");
+    bad("double equals in assignment", "دالة د() { س = = ١؛ }");
+    bad("struct field missing type", "هيكل ه { س }");
+    bad("incomplete struct at EOF", "دالة د() {} هيكل");
+    bad("const empty initializer", "ثابت س: صحيح = ؛");
+    bad("var empty initializer", "متغير س: صحيح = ؛");
+    bad("empty while condition", "دالة د() { طالما () {} }");
     test_priority();
     test_left_associativity();
     test_invalid_init();
@@ -207,6 +247,6 @@ int main(void) {
     parser_init(&p, arena, CAP, empty, 0);
     if (!parser_parse(&p) || p.error) failed++;
     if (failed) return 1;
-    puts("parser_test: 8 valid, 15 invalid, AST invariants, 3000 byte cases PASS");
+    puts("parser_test: 30 valid, 30 invalid, AST invariants, 3000 byte cases PASS");
     return 0;
 }
