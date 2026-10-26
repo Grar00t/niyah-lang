@@ -32,3 +32,4 @@ tests/lexer_test
 tests/lexer_recovery_test
 tests/morph_test
 tests/parser_test
+tests/check_test

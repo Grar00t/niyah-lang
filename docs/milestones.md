@@ -35,6 +35,17 @@ recovery, source-level AST dump/reparse, real compiler and M2 typing.
 
 
 ## M2 Type checker
+
+**First C API slice (2026-10-27):** scalar built-in type names, lexical
+scopes, exact assignment/return/operand types, duplicate and undefined name
+diagnostics, const-write protection. `tests/check_test.c` verifies 7 valid
+and 13 invalid cases. GCC ASan/UBSan and Clang are in local verification.
+
+**Not implemented:** user-defined structs/layout, pointer and array types,
+function calls, implicit conversions, missing-return analysis, complete
+semantic typed dumps and integration into the freestanding CLI. No native
+program generation. See `docs/M2_SCALAR_2026-10-27.md`.
+
 - Input: AST.
 - Output: typed dump (type per expr, struct layouts, frame sizes); diagnostics.
 - Done: every implicit conversion in `tests/type_neg/` rejected (i64↔u8, int↔bool, int↔ptr); layout of structs matches hand-computed offsets; undefined/duplicate/const-assign/missing-return all diagnosed.

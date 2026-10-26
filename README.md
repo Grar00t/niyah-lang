@@ -16,6 +16,12 @@ M0 is implemented: Unicode-aware C11 lexer and optional Arabic morphology
 candidate analysis. M1 has a working syntax parser and arena-backed AST.
 This is NOT yet a native Niyah compiler: M2 type checking, IR, code
 generation, executable emission and self-hosting remain unimplemented.
+M2 has a first, independently tested **scalar type and scope checker C API**:
+`checker_init` / `checker_run` in `src/check.[ch]`. It recognizes
+`صحيح`, `بايت`, `منطقي`, block scopes, locals, parameters, const
+assignment and strict scalar expressions. Full M2 is **NOT complete**:
+function calls, structs, pointers, arrays, flow-completeness, type layouts,
+and integration into the static `niyahparse` CLI remain open.
 Morphology never changes programming-language identifier identity.
 
 M1 now has 30 positive / 30 negative syntax fixtures, two multi-error

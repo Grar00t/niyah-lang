@@ -22,6 +22,8 @@ if command -v gcc >/dev/null 2>&1; then
         -fsanitize=address,undefined -fno-omit-frame-pointer \
         -o build/verify-local/parser-gcc-asan tests/parser_test.c src/parser.c src/lexer.c
     ./build/verify-local/parser-gcc-asan
+    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -fsanitize=address,undefined -fno-omit-frame-pointer         -o build/verify-local/check-gcc-asan tests/check_test.c src/check.c src/parser.c src/lexer.c
+    ./build/verify-local/check-gcc-asan
     echo 'GCC_ASAN_UBSAN_PASS'
 else
     echo 'FAIL: gcc is required for the sanitizer acceptance gate' >&2
@@ -41,6 +43,8 @@ if command -v clang >/dev/null 2>&1; then
     clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
         -o build/verify-local/parser-clang tests/parser_test.c src/parser.c src/lexer.c
     ./build/verify-local/parser-clang
+    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -o build/verify-local/check-clang tests/check_test.c src/check.c src/parser.c src/lexer.c
+    ./build/verify-local/check-clang
     echo 'CLANG_COMPILE_AND_TEST_PASS (Clang sanitizers not claimed)'
 fi
 
