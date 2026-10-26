@@ -1,0 +1,124 @@
+Environment: Ubuntu 24.04.3 LTS, Linux x86_64, GCC 13.3.0.
+Clang unavailable; Windows and WSL not run.
+
+$ Baseline main 654983aa4533b91df1da96615204500ad5b6176c: make test
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -ffreestanding -fno-stack-protector -fno-pic -no-pie -DNIYAH_LEXER_STANDALONE -static -nostdlib -o niyahlex src/lexer.c src/morph.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -ffreestanding -fno-stack-protector -fno-pic -no-pie -Werror -static -nostdlib -o niyahparse src/parser_cli.c src/parser.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/lexer_test tests/lexer_test.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/lexer_recovery_test tests/lexer_recovery_test.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/morph_test tests/morph_test.c src/morph.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/parser_test tests/parser_test.c src/parser.c src/lexer.c
+./niyahlex examples/مرحبا.نيّة > tests/lex/مرحبا.actual
+cmp tests/lex/مرحبا.expected tests/lex/مرحبا.actual
+./tests/lexer_test
+./tests/lexer_recovery_test
+lexer_recovery_test: 13 full-stream scenarios and 5000 fuzz cases PASS
+./tests/morph_test
+morph_test: 5000 byte-corpus cases and deterministic Arabic fixtures PASS
+./tests/parser_test
+parser_test: 8 valid, 15 invalid, AST invariants, 3000 byte cases PASS
+sh tests/cli_test.sh
+cli_test: morphology, source annotation, invalid UTF-8, size bound, output errors PASS
+sh tests/parser_cli_test.sh
+parser_cli_test: static syntax checker, AST, invalid input, IO bounds PASS
+./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
+cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual
+rm -f tests/parse/مرحبا.actual
+rm -f tests/lex/مرحبا.actual
+EXIT_CODE=0
+
+$ New regression against unchanged main: sh tests/morph_whitespace_test.sh
+/tmp/tmp.DyNFVnncYZ/expected /tmp/tmp.DyNFVnncYZ/actual differ: char 24, line 1
+FAIL: independent word analyses for U+00A0
+EXIT_CODE=1
+
+$ After fix: make -B verify-local (LeakSanitizer enabled)
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -ffreestanding -fno-stack-protector -fno-pic -no-pie -DNIYAH_LEXER_STANDALONE -static -nostdlib -o niyahlex src/lexer.c src/morph.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -ffreestanding -fno-stack-protector -fno-pic -no-pie -Werror -static -nostdlib -o niyahparse src/parser_cli.c src/parser.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/lexer_test tests/lexer_test.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/lexer_recovery_test tests/lexer_recovery_test.c src/lexer.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/morph_test tests/morph_test.c src/morph.c
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o tests/parser_test tests/parser_test.c src/parser.c src/lexer.c
+./niyahlex examples/مرحبا.نيّة > tests/lex/مرحبا.actual
+cmp tests/lex/مرحبا.expected tests/lex/مرحبا.actual
+./tests/lexer_test
+./tests/lexer_recovery_test
+lexer_recovery_test: 13 full-stream scenarios and 5000 fuzz cases PASS
+./tests/morph_test
+morph_test: 5000 byte-corpus cases and deterministic Arabic fixtures PASS
+./tests/parser_test
+parser_test: 8 valid, 15 invalid, AST invariants, 3000 byte cases PASS
+sh tests/cli_test.sh
+cli_test: morphology, source annotation, invalid UTF-8, size bound, output errors PASS
+sh tests/morph_whitespace_test.sh
+morph_whitespace_test: 49 Unicode/Arabic boundary, byte-preservation and compatibility cases PASS
+sh tests/parser_cli_test.sh
+parser_cli_test: static syntax checker, AST, invalid input, IO bounds PASS
+./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
+cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual
+rm -f tests/parse/مرحبا.actual
+rm -f tests/lex/مرحبا.actual
+sh tests/verify_local.sh
+==326==Can't open /proc/325/task for reading.
+==325==LeakSanitizer has encountered a fatal error.
+==325==HINT: For debugging, try setting environment variable LSAN_OPTIONS=verbosity=1:log_threads=1
+==325==HINT: LeakSanitizer does not work under ptrace (strace, gdb, etc)
+make: *** [Makefile:43: verify-local] Error 1
+EXIT_CODE=2
+
+$ After fix: ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 make verify-local
+./niyahlex examples/مرحبا.نيّة > tests/lex/مرحبا.actual
+cmp tests/lex/مرحبا.expected tests/lex/مرحبا.actual
+./tests/lexer_test
+./tests/lexer_recovery_test
+lexer_recovery_test: 13 full-stream scenarios and 5000 fuzz cases PASS
+./tests/morph_test
+morph_test: 5000 byte-corpus cases and deterministic Arabic fixtures PASS
+./tests/parser_test
+parser_test: 8 valid, 15 invalid, AST invariants, 3000 byte cases PASS
+sh tests/cli_test.sh
+cli_test: morphology, source annotation, invalid UTF-8, size bound, output errors PASS
+sh tests/morph_whitespace_test.sh
+morph_whitespace_test: 49 Unicode/Arabic boundary, byte-preservation and compatibility cases PASS
+sh tests/parser_cli_test.sh
+parser_cli_test: static syntax checker, AST, invalid input, IO bounds PASS
+./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
+cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual
+rm -f tests/parse/مرحبا.actual
+rm -f tests/lex/مرحبا.actual
+sh tests/verify_local.sh
+lexer_recovery_test: 13 full-stream scenarios and 5000 fuzz cases PASS
+morph_test: 5000 byte-corpus cases and deterministic Arabic fixtures PASS
+parser_test: 8 valid, 15 invalid, AST invariants, 3000 byte cases PASS
+GCC_ASAN_UBSAN_PASS
+ELF64_STATIC_CHECK_PASS
+LOCAL_VERIFY_PASS
+EXIT_CODE=0
+
+$ ./niyahlex --morph NBSP-reproducer.txt
+Input bytes: d988d8a7d984d983d8aad8a7d8a8c2a0d8b3d98ad983d8aad8a8
+1:1	WORD	والكتاب	status=0	candidates=4	truncated=0
+  0	STEM(والكتاب)	flags=1	pattern=NONE	verb_id=0
+  1	CONJ_W(و) + STEM(الكتاب)	flags=2	pattern=NONE	verb_id=0
+  2	CONJ_W(و) + DET_AL(ال) + STEM(كتاب)	flags=2	pattern=NONE	verb_id=0
+  3	CONJ_W(و) + DET_AL(ال) + STEM(كتاب)	flags=26	pattern=FIAAL	verb_id=0	root=كتب
+1:9	WORD	سيكتب	status=0	candidates=2	truncated=0
+  0	STEM(سيكتب)	flags=1	pattern=NONE	verb_id=0
+  1	FUTURE_S(س) + IMPF_Y(ي) + STEM(كتب)	flags=6	pattern=NONE	verb_id=1	root=كتب
+EXIT_CODE=0
+
+GitHub check-run annotation (public API GET, 2026-10-26):
+[
+  {
+    "path": ".github",
+    "blob_href": "https://github.com/Grar00t/niyah-lang/blob/eec4277ffaa8541f8087aab675092c3e291a48ce/.github",
+    "start_line": 1,
+    "start_column": null,
+    "end_line": 1,
+    "end_column": null,
+    "annotation_level": "failure",
+    "title": "",
+    "message": "The job was not started because your account is locked due to a billing issue.",
+    "raw_details": ""
+  }
+]

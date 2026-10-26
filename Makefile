@@ -36,6 +36,7 @@ test: niyahlex niyahparse tests/lexer_test tests/lexer_recovery_test tests/morph
 	./tests/parser_test
 	./tests/check_test
 	sh tests/cli_test.sh
+	sh tests/morph_whitespace_test.sh
 	sh tests/parser_cli_test.sh
 	./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
 	cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual

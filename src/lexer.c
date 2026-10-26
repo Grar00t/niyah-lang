@@ -330,7 +330,13 @@ static void ocp(u32 c) {
     oput(bytes, n);
 }
 static int morph_separator(u32 c) {
-    return c <= 0x20 || c == ',' || c == ';' || c == '.' || c == ':' ||
+    /* Unicode 17.0 White_Space beyond ASCII (UCD PropList.txt).
+     * Keep the existing C0, punctuation and bidi separators. This predicate
+     * is only for raw --morph text, not programming-language trivia. */
+    return c <= 0x20 || c == 0x0085 || c == 0x00A0 || c == 0x1680 ||
+        (c >= 0x2000 && c <= 0x200A) || c == 0x2028 || c == 0x2029 ||
+        c == 0x202F || c == 0x205F || c == 0x3000 ||
+        c == ',' || c == ';' || c == '.' || c == ':' ||
         c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' ||
         c == '!' || c == '?' || c == '"' || c == '/' || c == '\\' ||
         c == '=' || c == '+' || c == '*' || c == 0x60C || c == 0x61B || c == 0x61F ||
