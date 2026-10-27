@@ -15,6 +15,10 @@ int main(int argc,char **argv){
     root=parser_parse(&p);
     if(!root){fprintf(stderr,"syntax: %u:%u %s\n",p.error_at.line,p.error_at.col,p.error?p.error:"unknown");return 2;}
     if(!eval_constant_main(&p,root,&result)){fprintf(stderr,"evaluation: %u:%u %s\n",result.at.line,result.at.col,result.error?result.error:"unsupported program");return 3;}
-    printf("RESULT=%ld\n",(long)result.value);
+    if (printf("RESULT=%ld\n",(long)result.value) < 0 ||
+        fflush(stdout) == EOF) {
+        fputs("error: failed to write result\n", stderr);
+        return 4;
+    }
     return 0;
 }

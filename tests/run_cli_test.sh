@@ -16,4 +16,13 @@ if ./niyahrun "$tmp/overflow.نيه" > "$tmp/out" 2>&1; then echo 'FAIL overflow
 grep -Fq 'integer overflow' "$tmp/out"
 if ./niyahrun "$tmp/unsupported.نيه" > "$tmp/out" 2>&1; then echo 'FAIL unsupported'; exit 1; fi
 grep -Fq 'only one return statement' "$tmp/out"
-echo 'RUN_CLI_TEST_PASS: results, division, overflow, unsupported syntax'
+if test -c /dev/full; then
+    status=0
+    ./niyahrun "$tmp/five.نيه" > /dev/full 2> "$tmp/output-error" || status=$?
+    if test "$status" -ne 4; then
+        echo "FAIL: stdout write error exit code: $status (expected 4)" >&2
+        exit 1
+    fi
+    grep -Fq 'failed to write result' "$tmp/output-error"
+fi
+echo 'RUN_CLI_TEST_PASS: results, division, overflow, unsupported syntax, stdout write failures'
