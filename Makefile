@@ -37,7 +37,13 @@ tests/check_test: tests/check_test.c $(FRONTEND) $(HEADERS)
 tests/eval_test: tests/eval_test.c src/eval.c src/eval.h $(FRONTEND) $(HEADERS)
 	$(CC) $(HOST_CFLAGS) -o $@ tests/eval_test.c src/eval.c $(FRONTEND)
 
-test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test
+tests/depth_test: tests/depth_test.c src/eval.c src/eval.h src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS)
+	$(CC) $(HOST_CFLAGS) -o $@ tests/depth_test.c src/eval.c src/codegen.c $(FRONTEND)
+
+tests/native_result_probe: tests/native_result_probe.c
+	$(CC) $(HOST_CFLAGS) -o $@ tests/native_result_probe.c
+
+test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/native_result_probe
 	./niyahlex examples/مرحبا.نيّة > tests/lex/مرحبا.actual
 	cmp tests/lex/مرحبا.expected tests/lex/مرحبا.actual
 	./tests/lexer_test
@@ -46,12 +52,14 @@ test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/pars
 	./tests/parser_test
 	./tests/check_test
 	./tests/eval_test
+	./tests/depth_test
 	sh tests/cli_test.sh
 	sh tests/morph_whitespace_test.sh
 	sh tests/parser_cli_test.sh
 	sh tests/check_cli_test.sh
 	sh tests/run_cli_test.sh
 	sh tests/native_cli_test.sh
+	sh tests/native_result_mutation_test.sh
 	./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
 	cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual
 	rm -f tests/parse/مرحبا.actual tests/lex/مرحبا.actual
@@ -60,6 +68,6 @@ verify-local: test
 	sh tests/verify_local.sh
 
 clean:
-	rm -f niyahlex niyahparse niyahrun niyahc tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/lex/مرحبا.actual tests/parse/مرحبا.actual
+	rm -f niyahlex niyahparse niyahrun niyahc tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/native_result_probe tests/lex/مرحبا.actual tests/parse/مرحبا.actual
 
 .PHONY: all test verify-local clean

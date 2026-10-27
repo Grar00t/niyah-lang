@@ -61,6 +61,24 @@ exit status.
 
 ## Verification
 
-`make test` exercises language, CLI and execution behavior. `make
-verify-local` adds local sanitizer and Clang checks. Tests and diagnostic
-code are kept in `tests/`.
+`make test` exercises language, CLI and execution behavior. Native cases
+check the public exit status modulo 256 and independently compare the full
+signed 64-bit result against the interpreter. A test-only helper uses Linux
+`ptrace` on its own child, observes RDI at entry to the exit syscall after a
+successful exec, and confirms normal termination. It does not modify the
+generated ELF; unavailable tracing fails the test.
+
+The full-value check also enforces an internal invariant: the entry bridge
+preserves the entire result of `رئيسية()` in the exit-syscall argument.
+A temporary compiler mutation that adds 256 to that result is rejected,
+although it preserves the public 8-bit exit contract. Fixtures cover high
+bits in arithmetic, comparisons, branches, shifts and function calls.
+
+Parser nesting, semantic expression depth and native statement layout have
+separate bounded traversals. Frame layout visits declarations and statement
+bodies, without charging expression subtrees to the surrounding block's
+depth. Boundary tests cover accepted and rejected nesting and expressions.
+
+`make verify-local` additionally builds and tests the host tools with GCC
+ASan/UBSan and ordinary Clang. Sanitizers instrument the host C tools, not
+the emitted machine code. Tests and diagnostic code are kept in `tests/`.

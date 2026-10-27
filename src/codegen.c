@@ -303,11 +303,21 @@ static int statement(Emitter *e,u32 id,u32 depth) {
 }
 static int count_locals(Emitter *e,u32 id,u32 depth,u32 *count) {
     u32 child;
+    AstKind kind=node(e,id)->kind;
     if(depth>CHECK_MAX_DEPTH)return fail(e,id,"native layout nesting exceeded");
-    if(node(e,id)->kind==A_VAR || node(e,id)->kind==A_CONST) {
+    if(kind==A_VAR || kind==A_CONST) {
         if(++*count>CODEGEN_MAX_SLOTS)return fail(e,id,"native local slot limit exceeded");
+        return 1;
     }
-    for(child=first(e,id);child;child=next(e,child))
+    /* Frame layout needs declarations and statement bodies only. Expressions
+     * and types have separate checker/emitter bounds; charging their depth to
+     * an enclosing block rejects otherwise valid expressions near the limit. */
+    if(kind==A_BLOCK)child=first(e,id);
+    else if(kind==A_IF || kind==A_WHILE) {
+        child=first(e,id);
+        child=child?next(e,child):0; /* skip the condition expression */
+    } else return 1;
+    for(;child;child=next(e,child))
         if(!count_locals(e,child,depth+1,count))return 0;
     return 1;
 }

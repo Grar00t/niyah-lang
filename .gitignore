@@ -33,3 +33,5 @@ tests/parser_test
 tests/check_test
 
 tests/eval_test
+tests/depth_test
+tests/native_result_probe

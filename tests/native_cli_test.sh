@@ -5,6 +5,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 NIYAHC=${NIYAHC:-./niyahc}
 NIYAHRUN=${NIYAHRUN:-./niyahrun}
+NATIVE_RESULT_PROBE=${NATIVE_RESULT_PROBE:-./tests/native_result_probe}
 cases=0
 failures=0
 native_ok() {
@@ -30,11 +31,24 @@ native_ok() {
     fi
     test -x "$exe"
     got=0
-    timeout 10 "$exe" > "$tmp/out" 2> "$tmp/err" || got=$?
+    timeout --preserve-status -k 1 10 "$exe" > "$tmp/out" 2> "$tmp/err" || got=$?
     expected=$(( (want % 256 + 256) % 256 ))
     if test "$got" -ne "$expected" || test -s "$tmp/out" || test -s "$tmp/err"; then
         echo "FAIL native $name: exit=$got expected=$expected oracle=$want" >&2
         cat "$tmp/out" "$tmp/err" >&2
+        exit 1
+    fi
+    # Observe the unmodified executable's full exit argument before the kernel
+    # truncates it to an 8-bit process status. This also catches high-bit errors
+    # in the entry bridge after main returns.
+    if ! timeout 10 "$NATIVE_RESULT_PROBE" "$exe" > "$tmp/full-result" 2> "$tmp/full-error"; then
+        echo "FAIL native full-i64 observation $name" >&2
+        cat "$tmp/full-result" "$tmp/full-error" >&2
+        exit 1
+    fi
+    if test "$(cat "$tmp/full-result")" != "RESULT=$want" || test -s "$tmp/full-error"; then
+        echo "FAIL native full i64 $name: expected RESULT=$want" >&2
+        cat "$tmp/full-result" "$tmp/full-error" >&2
         exit 1
     fi
 }
@@ -55,7 +69,7 @@ native_bad() {
         exit 1
     fi
     got=0
-    timeout 10 "$exe" > "$tmp/out" 2> "$tmp/err" || got=$?
+    timeout --preserve-status -k 1 10 "$exe" > "$tmp/out" 2> "$tmp/err" || got=$?
     if test "$got" -ne "$want" || test -s "$tmp/out" || test ! -s "$tmp/err"; then
         echo "FAIL native $name: exit=$got expected=$want with diagnostic" >&2
         cat "$tmp/out" "$tmp/err" >&2
@@ -136,6 +150,40 @@ while test "$i" -le 50; do
     native_ok "arithmetic sample $i" "$expected" "دالة رئيسية() -> صحيح { متغير س: صحيح = $i؛ أرجع (س * ٧ - ٣) / ٢ + س % ٥؛ }"
     i=$((i + 1))
 done
+# Layout must not add surrounding statement depth to expression depth.
+expression='١'
+i=0
+while test "$i" -lt 127; do expression="$expression + ١"; i=$((i + 1)); done
+native_ok '127-operator expression' 128 "دالة رئيسية() -> صحيح { أرجع $expression؛ }"
+expression="$expression + ١"
+native_ok '128-operator expression' 129 "دالة رئيسية() -> صحيح { أرجع $expression؛ }"
+native_ok 'nested blocks with deep expression' 129 "دالة رئيسية() -> صحيح { {{{{{{{{{{ أرجع $expression؛ }}}}}}}}}} }"
+
+# Full-width values and branches whose low byte alone is insufficient.
+native_ok 'low byte collision one' 1 'دالة رئيسية() -> صحيح { أرجع ١؛ }'
+native_ok 'low byte collision 257' 257 'دالة رئيسية() -> صحيح { أرجع ٢٥٧؛ }'
+native_ok 'low byte collision 65537' 65537 'دالة رئيسية() -> صحيح { أرجع 65537؛ }'
+native_ok 'low byte collision high32' 4294967297 'دالة رئيسية() -> صحيح { أرجع 4294967297؛ }'
+native_ok 'low byte collision high40' 1099511627777 'دالة رئيسية() -> صحيح { أرجع 1099511627777؛ }'
+native_ok 'negative low byte collision' -255 'دالة رئيسية() -> صحيح { أرجع -٢٥٥؛ }'
+native_ok 'negative high32 collision' -4294967295 'دالة رئيسية() -> صحيح { أرجع -4294967295؛ }'
+native_ok 'high multiply' 4503599627370496 'دالة رئيسية() -> صحيح { أرجع 4294967296 * 1048576؛ }'
+native_ok 'high divide' 4294967296 'دالة رئيسية() -> صحيح { أرجع 4611686018427387904 / 1073741824؛ }'
+native_ok 'negative high divide' -4294967296 'دالة رئيسية() -> صحيح { أرجع -4611686018427387904 / 1073741824؛ }'
+native_ok 'high remainder' 1099511627775 'دالة رئيسية() -> صحيح { أرجع 9223372036854775807 % 1099511627776؛ }'
+native_ok 'left shift high32' 2147483648 'دالة رئيسية() -> صحيح { أرجع ١ << ٣١؛ }'
+native_ok 'left shift high62' 4611686018427387904 'دالة رئيسية() -> صحيح { أرجع ١ << ٦٢؛ }'
+native_ok 'negative left shift high62' -9223372036854775808 'دالة رئيسية() -> صحيح { أرجع -٢ << ٦٢؛ }'
+native_ok 'negative right shift high40' -4294967296 'دالة رئيسية() -> صحيح { أرجع -1099511627776 >> ٨؛ }'
+native_ok 'high bitwise and' 1099511627776 'دالة رئيسية() -> صحيح { أرجع 1099511627777 & 1099511627776؛ }'
+native_ok 'high bitwise or' 1099511628032 'دالة رئيسية() -> صحيح { أرجع 1099511627776 | ٢٥٦؛ }'
+native_ok 'high bitwise xor' 1099511627776 'دالة رئيسية() -> صحيح { أرجع 1099511627777 ^ ١؛ }'
+native_ok 'high bitwise not' -4294967297 'دالة رئيسية() -> صحيح { أرجع ~4294967296؛ }'
+native_ok 'high carry' 4294967296 'دالة رئيسية() -> صحيح { أرجع 4294967295 + ١؛ }'
+native_ok 'high borrow' 4294967295 'دالة رئيسية() -> صحيح { أرجع 4294967296 - ١؛ }'
+native_ok 'high bits equality branch' 0 'دالة رئيسية() -> صحيح { إذا (١ == ٢٥٧) { أرجع ١؛ } وإلا { أرجع ٠؛ } }'
+native_ok 'high signed comparison' 1 'دالة رئيسية() -> صحيح { إذا ((2147483648 > ١) && (-4294967295 < ١) && (4294967297 != ١)) { أرجع ١؛ } وإلا { أرجع ٠؛ } }'
+native_ok 'high argument and return' 1099511627777 'دالة هوية(س: صحيح) -> صحيح { أرجع س؛ } دالة رئيسية() -> صحيح { أرجع هوية(1099511627777)؛ }'
 native_bad addition_overflow 120 'دالة رئيسية() -> صحيح { أرجع 9223372036854775807 + ١؛ }'
 native_bad subtraction_overflow 120 'دالة رئيسية() -> صحيح { أرجع (-9223372036854775807 - ١) - ١؛ }'
 native_bad multiplication_overflow 120 'دالة رئيسية() -> صحيح { أرجع 9223372036854775807 * ٢؛ }'
@@ -200,4 +248,4 @@ test ! -e "$tmp/missing-parent/out"
 case "$NIYAHC" in /*) compiler=$NIYAHC;; *) compiler="$(pwd)/$NIYAHC";; esac
 (cd "$tmp" && "$compiler" -- "$tmp/case-1.nya")
 cmp "$tmp/case-1.elf" "$tmp/a.out"
-echo "NATIVE_CLI_TEST_PASS: $cases native/oracle executions, $failures guarded runtime failures, semantic/IO/no-overwrite/ELF checks"
+echo "NATIVE_CLI_TEST_PASS: $cases full-i64 native/oracle comparisons plus exit-status checks, $failures guarded runtime failures, semantic/IO/no-overwrite/ELF checks"

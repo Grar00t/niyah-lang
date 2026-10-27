@@ -72,9 +72,15 @@ See the [language reference](docs/language.md),
 
 ## Verification
 
-`make test` runs the regression suites. `make verify-local` also runs local
-sanitizer and Clang checks. GitHub Actions is manual-only; pushing does not
-start a workflow.
+`make test` runs the regression suites, compares full signed 64-bit native
+results with the interpreter, and separately checks the public 8-bit exit
+status. A test-only helper observes the unmodified program's exit-syscall
+argument using Linux `ptrace` on its own child. Tests require permission
+for parent-child tracing; unavailable tracing fails explicitly.
+
+`make verify-local` also builds and tests the host tools with GCC
+ASan/UBSan and ordinary Clang. The generated machine code is not sanitizer
+instrumented. GitHub Actions is manual-only; pushing does not start a workflow.
 
 ## License
 
