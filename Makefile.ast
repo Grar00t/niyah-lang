@@ -3,7 +3,7 @@ NIYAH_MODEL ?= ../niyah-assembly-model
 AST_MODEL = $(abspath $(NIYAH_MODEL))
 AST_BUILD = build/tensor_core
 AST_FLAGS = -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -ffreestanding -fno-builtin -fno-stack-protector -fno-pie -fno-tree-loop-distribute-patterns -fno-asynchronous-unwind-tables -fno-unwind-tables -mno-avx -mno-avx2
-$(AST_BUILD)/tensor_templates.h: tools/gen_tensor_templates.py src/tensor_ir_bridge.s $(AST_MODEL)/src/tensor_runtime.s $(AST_MODEL)/src/tensor_dispatch.s $(AST_MODEL)/src/tile_allocator.s niyahc-tile
+$(AST_BUILD)/tensor_templates.h: tools/gen_tensor_templates.py src/tensor_ir_bridge.s $(AST_MODEL)/src/tensor_runtime.s $(AST_MODEL)/src/tensor_dispatch.s $(AST_MODEL)/src/tile_allocator.s $(AST_MODEL)/build/tile_allocator niyahc-tile
 	python3 tools/gen_tensor_templates.py . "$(AST_MODEL)"
 $(AST_BUILD)/tensor_allocate.o: $(AST_BUILD)/tensor_templates.h
 	as --64 -o $@ $(AST_BUILD)/tensor_allocate.s
@@ -14,3 +14,7 @@ niyahc: src/compile_cli.c src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS) src
 test-ast-tensor: niyahc niyahc-tile
 	NIYAH_MODEL="$(AST_MODEL)" python3 tests/test_ast_tensor.py
 test: test-ast-tensor
+
+# A fresh companion checkout has no generated allocator binary.
+$(AST_MODEL)/build/tile_allocator: $(AST_MODEL)/src/tile_allocator.s $(AST_MODEL)/Makefile.kernels
+	$(MAKE) -C "$(AST_MODEL)" tile-allocator

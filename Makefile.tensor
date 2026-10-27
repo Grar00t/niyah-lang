@@ -1,4 +1,4 @@
-# Optional fixed-shape tensor compiler; existing scalar-language compiler is unchanged.
+# Reference tensor sidecar used at build/test time by the unified compiler.
 TENSOR_BUILD ?= build/tensor_backend
 TENSOR_CFLAGS = -O2 -std=c11 -Wall -Wextra -Werror -ffreestanding -fno-builtin -fno-stack-protector -fno-pie -fno-tree-loop-distribute-patterns -fno-asynchronous-unwind-tables -mno-avx -mno-avx2 -I$(CURDIR)/src
 .PHONY: tensor-backend

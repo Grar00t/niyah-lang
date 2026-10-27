@@ -16,7 +16,9 @@ UTF-8 source → lexer → parser → AST → scalar checker
 | `src/parser.[ch]` | Recursive-descent parser, precedence and arena AST |
 | `src/check.[ch]` | Scalar types, bindings, function signatures and return paths |
 | `src/eval.[ch]`, `src/run_cli.c` | Scalar interpreter and hosted CLI |
-| `src/codegen.[ch]`, `src/compile_cli.c` | Machine-code generation, ELF output and hosted CLI |
+| `src/codegen.[ch]`, `src/compile_cli.c` | Direct ELF generation and freestanding production CLI |
+| `src/tensor_core.[ch]` | Intrinsic AST annotation, typed lowering, allocation and tensor ELF emission |
+| `src/compiler_start.s`, `src/compiler_native.c` | Entry point, raw syscall ABI and bounded runtime support |
 
 ## Front end
 
@@ -90,3 +92,11 @@ depth. Boundary tests cover accepted and rejected nesting and expressions.
 `make verify-local` additionally builds and tests the host tools with GCC
 ASan/UBSan and ordinary Clang. Sanitizers instrument the host C tools, not
 the emitted machine code. Tests and diagnostic code are kept in `tests/`.
+
+## Tensor integration
+
+Tensor intrinsics are core AST nodes. The production compiler lowers and
+allocates them in memory, then emits guarded native code without launching
+helpers. The scalar interpreter remains hosted. The diagram above describes
+the scalar path; [TENSOR_AST.md](TENSOR_AST.md) defines the tensor path,
+its limits, backend dispatch and byte-parity requirements.
