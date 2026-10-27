@@ -24,6 +24,13 @@ int main(void){
  GOOD("global lookup","متغير س: صحيح = ١؛ دالة د() -> صحيح { أرجع س؛ }");
  GOOD("void function","دالة د() { أرجع؛ }");
  GOOD("two distinct functions","دالة أ() { أرجع؛ } دالة ب() { أرجع؛ }");
+ GOOD("if else both return","دالة د(س: صحيح) -> صحيح { إذا (س > ٠) { أرجع ١؛ } وإلا { أرجع ٢؛ } }");
+ GOOD("nested if branches","دالة د(س: صحيح) -> صحيح { إذا (س > ٠) { أرجع ١؛ } وإلا إذا (س < ٠) { أرجع ٢؛ } وإلا { أرجع ٣؛ } }");
+ GOOD("return after if","دالة د(س: صحيح) -> صحيح { إذا (س > ٠) { أرجع ١؛ } أرجع ٢؛ }");
+ BAD("missing return empty","دالة د() -> صحيح { }","not all paths return a value");
+ BAD("missing return only if","دالة د(س: صحيح) -> صحيح { إذا (س > ٠) { أرجع ١؛ } }","not all paths return a value");
+ BAD("missing return else block","دالة د(س: صحيح) -> صحيح { إذا (س > ٠) { أرجع ١؛ } وإلا {} }","not all paths return a value");
+ BAD("while not assured","دالة د(س: صحيح) -> صحيح { طالما (س > ٠) { أرجع ١؛ } }","not all paths return a value");
  BAD("duplicate functions","دالة د() { أرجع؛ } دالة د() { أرجع؛ }","duplicate symbol in scope");
  BAD("function then variable","دالة د() { أرجع؛ } متغير د: صحيح = ١؛","duplicate symbol in scope");
  BAD("variable then function","متغير د: صحيح = ١؛ دالة د() { أرجع؛ }","duplicate symbol in scope");
@@ -61,6 +68,6 @@ int main(void){
    if(!root||!checker_run(&c,root)||c.errors||c.count!=1||c.scope)count++;
  }
  if(count)return 1;
- puts("check_test: 8 positive, 18 negative, checker reset contract PASS");
+ puts("check_test: 11 positive, 22 negative, checker reset and return-path contracts PASS");
  return 0;
 }

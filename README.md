@@ -25,6 +25,7 @@ Full M2 is **NOT complete**:
 function calls, structs, pointers, arrays, flow-completeness and type
 layouts remain open. `niyahparse --check` exposes only this supported
 M2 scalar/scope subset, failing on unsupported semantic constructs.
+M2 checks that non-void functions return on all provable paths (conservative).
 Morphology never changes programming-language identifier identity.
 
 M1 now has 30 positive / 30 negative syntax fixtures, two multi-error

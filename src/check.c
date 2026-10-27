@@ -184,6 +184,35 @@ static void block(Checker *c,u32 id,u32 depth,CheckType result_type){
     c->count=mark;
     c->scope--;
 }
+/* Conservative control-flow proof: every possible exit of a non-void
+ * function must reach a return. Loops never guarantee termination.
+ * This does not attempt constant folding or unreachable-code removal. */
+static int guarantees_return(Checker *c,u32 id,u32 depth){
+    u32 node, cond, yes, no;
+    const AstNode *n;
+    if(!id || depth>CHECK_MAX_DEPTH)return 0;
+    n=at(c,id);
+    if(n->kind==A_RETURN)return 1;
+    if(n->kind==A_BLOCK){
+        node=first(c,id);
+        while(node){
+            if(guarantees_return(c,node,depth+1))return 1;
+            node=next(c,node);
+        }
+        return 0;
+    }
+    if(n->kind==A_IF){
+        cond=first(c,id);
+        if(!cond)return 0;
+        yes=next(c,cond);
+        if(!yes)return 0;
+        no=next(c,yes);
+        return no && guarantees_return(c,yes,depth+1) &&
+               guarantees_return(c,no,depth+1);
+    }
+    return 0;
+}
+
 int checker_run(Checker *c,u32 root){
     u32 id,part,body,p;
     CheckType ret;
@@ -213,8 +242,12 @@ int checker_run(Checker *c,u32 root){
             ret=TY_VOID;
             if(part&&at(c,part)->kind!=A_BLOCK) {ret=declared(c,part,0);part=next(c,part);}
             body=part;
-            if(body&&at(c,body)->kind==A_BLOCK)block(c,body,0,ret);
-            else error(c,id,"function body missing");
+            if(body&&at(c,body)->kind==A_BLOCK){
+                block(c,body,0,ret);
+                if(ret!=TY_VOID && ret!=TY_ERROR &&
+                   !guarantees_return(c,body,0))
+                    error(c,id,"not all paths return a value");
+            } else error(c,id,"function body missing");
             c->count=mark;
             c->scope--;
         }
