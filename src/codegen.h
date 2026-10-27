@@ -15,7 +15,8 @@
  * Execution bounds: 128 active calls and 1,000,000 statement/loop-test ticks.
  * Locals without initializers are unreadable until assigned. Globals are
  * initialized in declaration order; a no-initializer global becomes zero
- * at its declaration, while future globals remain unreadable.
+ * at its declaration. A later global is unreadable until initialized or
+ * assigned; its declaration still runs and replaces any earlier assignment.
  * Arguments evaluate left to right. && and || short circuit. Signed i64
  * arithmetic and left shifts check overflow; >> is arithmetic, counts 0..63.
  * Runtime failures write stderr and exit 120 (overflow), 121 (division by
