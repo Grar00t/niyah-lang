@@ -1,5 +1,8 @@
 #include "codegen.h"
 #include "check.h"
+#ifdef NIYAH_TENSOR_CORE
+#include "tensor_core.h"
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +13,14 @@ enum { ELF_BASE = 0x400000, CODE_START = 256,
        RELOC_CALL, RELOC_TRAP, RELOC_GLOBAL,
        TRAP_OVERFLOW = 0, TRAP_DIVZERO, TRAP_SHIFT, TRAP_FUEL,
        TRAP_DEPTH, TRAP_UNINITIALIZED, TRAP_COUNT };
+/* Generated-code register contract (private calling convention):
+ * rax: expression/result; rcx: binary RHS and shift count (cl);
+ * rdx: division dividend/remainder and checked-shift original;
+ * r10: checked-shift scratch; r11: global address scratch.
+ * These registers are caller-clobbered. Live values across RHS evaluation or
+ * calls stay on the stack. rbp/rsp delimit frames and stack-passed arguments.
+ * r12 counts active calls; r13 holds remaining fuel across calls. Expression
+ * optimizations must not borrow either counter or remove their checks. */
 typedef struct { u32 node, address, argc, body; } Function;
 typedef struct { Token name; u32 global; int32_t displacement; u8 kind; } Binding;
 /* Binding kind: 0 local with flag, 1 parameter, 2 global with flag. */
@@ -94,6 +105,14 @@ static void trap_if(Emitter *e,int condition,u32 trap) {
     byte(e,0x0f);byte(e,(u8)(0x80+condition));reloc(e,RELOC_TRAP,trap);
 }
 static void mov_rax(Emitter *e,uint64_t value) {byte(e,0x48);byte(e,0xb8);word64(e,value);}
+/* C7 /0 sign-extends imm32 to 64 bits; B9 carries all 64 bits. */
+static void mov_rcx_literal(Emitter *e,i64 value) {
+    if(value>=INT32_MIN && value<=INT32_MAX) {
+        raw(e,"\x48\xc7\xc1",3);word32(e,(u32)(int32_t)value);
+    } else {
+        raw(e,"\x48\xb9",2);word64(e,(uint64_t)value);
+    }
+}
 static void test_rax(Emitter *e) {raw(e,"\x48\x85\xc0",3);}
 static void tick(Emitter *e) {
     raw(e,"\x4d\x85\xed",3);             /* test r13,r13 */
@@ -160,9 +179,17 @@ static int binary(Emitter *e,u32 id,u32 depth) {
         if(!expression(e,right,depth+1))return 0;
         patch_jump(e,skip,e->pos);return !e->failed;
     }
-    byte(e,0x50);                          /* push rax: left operand */
-    if(!expression(e,right,depth+1))return 0;
-    raw(e,"\x48\x89\xc1\x58",4);      /* mov rcx,rax; pop rax */
+    if(node(e,right)->kind==A_INT) {
+        /* A literal has no effects, traps or fuel cost. Keep the left result
+         * in rax; loading rcx cannot clobber it. All operator guards below
+         * remain shared with the general path. Unary negation is not folded. */
+        e->current=right;
+        mov_rcx_literal(e,node(e,right)->tok.value);
+    } else {
+        byte(e,0x50);                      /* push rax: left operand */
+        if(!expression(e,right,depth+1))return 0;
+        raw(e,"\x48\x89\xc1\x58",4);  /* mov rcx,rax; pop rax */
+    }
     switch(op) {
     case T_PLUS:
         raw(e,"\x48\x01\xc8",3);trap_if(e,0,TRAP_OVERFLOW);break;
@@ -419,6 +446,9 @@ int codegen_elf64(const Parser *parser,u32 root,u8 *output,u32 capacity,CodegenR
     u32 entry=0,i,id,init;
     int ok=0;
     if(!result)return 0;
+#ifdef NIYAH_TENSOR_CORE
+    if(parser && parser->has_tensor)return tensor_codegen(parser,root,output,capacity,result);
+#endif
     memset(result,0,sizeof(*result));
     if(!parser || !output || !parser->nodes || !root || root>=parser->count ||
        parser->count>CODEGEN_MAX_NODES || capacity<CODE_START || parser->nodes[root].kind!=A_PROGRAM) {

@@ -9,9 +9,11 @@
  * is embedded or invoked. Inputs must be an arena produced by parser_parse.
  * The semantic checker runs before emission. The entry is رئيسية() -> صحيح.
  *
- * Compile bounds: 65,536 AST nodes, 1,024 functions, 2,048 storage slots per
- * function and globals, 64 arguments per call, 16,384 relocations, nesting
- * depth 128, and a caller-supplied output capacity (CLI: 1 MiB).
+ * API bounds: 65,536 AST arena entries (including reserved entry 0), 1,024
+ * functions, 2,048 storage slots per function and globals, 64 arguments,
+ * 16,384 relocations and depth 128; the checker's shared symbol bound also
+ * applies. Output capacity is caller-supplied. The CLI uses 4,096 AST arena
+ * entries and a 1 MiB output buffer; it does not expose the API's AST limit.
  * Execution bounds: 128 active calls and 1,000,000 statement/loop-test ticks.
  * Locals without initializers are unreadable until assigned. Globals are
  * initialized in declaration order; a no-initializer global becomes zero
@@ -36,6 +38,7 @@ typedef struct {
     u32 size;                  /* complete ELF byte count, only on success */
     Token at;
     const char *error;          /* static string, NULL on success */
+    int exit_code;             /* tensor path: 65 invalid, 77 pressure */
     int semantic_error;         /* checker diagnostic, not an emitter error */
 } CodegenResult;
 

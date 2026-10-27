@@ -1,4 +1,7 @@
 CC ?= cc
+PYTHON ?= python3
+TEST_EVIDENCE_DIR ?= build/test-evidence
+export TEST_EVIDENCE_DIR
 HOST_CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror
 FREE_CFLAGS = $(HOST_CFLAGS) -ffreestanding -fno-stack-protector -fno-pic -no-pie
 FREE_LDFLAGS = -static -nostdlib
@@ -16,8 +19,7 @@ niyahparse: src/parser_cli.c $(FRONTEND) $(HEADERS)
 niyahrun: src/run_cli.c src/eval.c src/eval.h $(FRONTEND) $(HEADERS)
 	$(CC) $(HOST_CFLAGS) -o $@ src/run_cli.c src/eval.c $(FRONTEND)
 
-niyahc: src/compile_cli.c src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS)
-	$(CC) $(HOST_CFLAGS) -o $@ src/compile_cli.c src/codegen.c $(FRONTEND)
+# Unified freestanding niyahc is defined in Makefile.ast.
 
 tests/lexer_test: tests/lexer_test.c src/lexer.c src/lexer.h
 	$(CC) $(HOST_CFLAGS) -o $@ tests/lexer_test.c src/lexer.c
@@ -40,10 +42,13 @@ tests/eval_test: tests/eval_test.c src/eval.c src/eval.h $(FRONTEND) $(HEADERS)
 tests/depth_test: tests/depth_test.c src/eval.c src/eval.h src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS)
 	$(CC) $(HOST_CFLAGS) -o $@ tests/depth_test.c src/eval.c src/codegen.c $(FRONTEND)
 
+tests/resource_limits_test: tests/resource_limits_test.c src/eval.c src/eval.h src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS)
+	$(CC) $(HOST_CFLAGS) -o $@ tests/resource_limits_test.c src/eval.c src/codegen.c $(FRONTEND)
+
 tests/native_result_probe: tests/native_result_probe.c
 	$(CC) $(HOST_CFLAGS) -o $@ tests/native_result_probe.c
 
-test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/native_result_probe
+test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/resource_limits_test tests/native_result_probe
 	./niyahlex examples/مرحبا.نيّة > tests/lex/مرحبا.actual
 	cmp tests/lex/مرحبا.expected tests/lex/مرحبا.actual
 	./tests/lexer_test
@@ -53,6 +58,7 @@ test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/pars
 	./tests/check_test
 	./tests/eval_test
 	./tests/depth_test
+	./tests/resource_limits_test
 	sh tests/cli_test.sh
 	sh tests/morph_whitespace_test.sh
 	sh tests/parser_cli_test.sh
@@ -60,6 +66,8 @@ test: all tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/pars
 	sh tests/run_cli_test.sh
 	sh tests/native_cli_test.sh
 	sh tests/native_result_mutation_test.sh
+	$(PYTHON) tests/literal_codegen_test.py
+	$(PYTHON) tests/differential_test.py --evidence-dir "$(TEST_EVIDENCE_DIR)/differential"
 	./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
 	cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual
 	rm -f tests/parse/مرحبا.actual tests/lex/مرحبا.actual
@@ -68,6 +76,11 @@ verify-local: test
 	sh tests/verify_local.sh
 
 clean:
-	rm -f niyahlex niyahparse niyahrun niyahc tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/native_result_probe tests/lex/مرحبا.actual tests/parse/مرحبا.actual
+	rm -f niyahlex niyahparse niyahrun niyahc tests/lexer_test tests/lexer_recovery_test tests/morph_test tests/parser_test tests/check_test tests/eval_test tests/depth_test tests/resource_limits_test tests/native_result_probe tests/lex/مرحبا.actual tests/parse/مرحبا.actual
 
 .PHONY: all test verify-local clean
+
+# Native morphology / typed tensor IR bridge.
+include Makefile.tensor
+
+include Makefile.ast

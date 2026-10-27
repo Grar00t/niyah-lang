@@ -9,18 +9,18 @@ verify_compiler() {
     label=$2
     extra=$3
     flags="-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror"
-    for suite in lexer lexer_recovery morph parser check eval depth; do
+    for suite in lexer lexer_recovery morph parser check eval depth resource_limits; do
         case "$suite" in
             lexer|lexer_recovery) sources="src/lexer.c" ;;
             morph) sources="src/morph.c" ;;
             parser) sources="src/parser.c src/lexer.c" ;;
             check) sources="$frontend" ;;
             eval) sources="src/eval.c $frontend" ;;
-            depth) sources="src/eval.c src/codegen.c $frontend" ;;
+            depth|resource_limits) sources="src/eval.c src/codegen.c $frontend" ;;
         esac
         "$compiler" $flags $extra -o "build/verify-local/$suite-$label" \
             "tests/${suite}_test.c" $sources
-        "./build/verify-local/$suite-$label"
+        if test "$suite" != resource_limits; then "./build/verify-local/$suite-$label"; fi
     done
     "$compiler" $flags $extra -o "build/verify-local/niyahrun-$label" \
         src/run_cli.c src/eval.c $frontend
@@ -28,11 +28,19 @@ verify_compiler() {
         src/compile_cli.c src/codegen.c $frontend
     "$compiler" $flags $extra -o "build/verify-local/native-result-probe-$label" \
         tests/native_result_probe.c
+    NIYAHC="./build/verify-local/niyahc-$label" "./build/verify-local/resource_limits-$label"
     NIYAHRUN="./build/verify-local/niyahrun-$label" sh tests/run_cli_test.sh
     NIYAHRUN="./build/verify-local/niyahrun-$label" \
         NIYAHC="./build/verify-local/niyahc-$label" \
         NATIVE_RESULT_PROBE="./build/verify-local/native-result-probe-$label" \
         sh tests/native_cli_test.sh
+    NIYAHC="./build/verify-local/niyahc-$label" \
+        NATIVE_RESULT_PROBE="./build/verify-local/native-result-probe-$label" \
+        python3 tests/literal_codegen_test.py
+    NIYAHRUN="./build/verify-local/niyahrun-$label" \
+        NIYAHC="./build/verify-local/niyahc-$label" \
+        NATIVE_RESULT_PROBE="./build/verify-local/native-result-probe-$label" \
+        python3 tests/differential_test.py --evidence-dir "${TEST_EVIDENCE_DIR:-build/test-evidence}/differential-$label"
 }
 
 command -v gcc >/dev/null 2>&1 || {

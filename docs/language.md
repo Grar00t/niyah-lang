@@ -104,6 +104,14 @@ The generated executable exits with the returned integer modulo 256.
   condition checks and global initializations; 128 nested calls; and at
   most 64 arguments per call.
 
+The compiler and interpreter CLIs each have 4,096 AST arena entries,
+including reserved entry zero. The emitter API accepts up to 65,536 entries
+when the caller supplies a larger parser arena. The checker permits 2,048
+simultaneously live symbols in total: function names, globals, parameters
+and local bindings share this capacity. These are aggregate limits, not
+independent allowances. The native emitter also limits functions to 1,024
+and local storage slots to 2,048 per function (including disjoint scopes).
+
 | Tool | Exit codes |
 | --- | --- |
 | `niyahparse` | 0 valid; 1 usage/read; 2 syntax; 3 output; 4 semantic |

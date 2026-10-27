@@ -35,3 +35,22 @@ tests/check_test
 tests/eval_test
 tests/depth_test
 tests/native_result_probe
+tests/resource_limits_test
+__pycache__/
+
+# Local compiler, credentials and model artifacts
+/niyahc-tile
+/niyahc.baseline
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.ckpt
+*.f32
