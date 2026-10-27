@@ -1,4 +1,6 @@
-(* Niyah grammar. ISO-14977-style, extended: {x} = 0..n, [x] = optional, (a|b) = choice. *)
+(* Parser grammar. ISO-14977-style: {x} = 0..n, [x] = optional, (a|b) = choice.
+   Semantic checking supports only the scalar subset described in language.md.
+   Recognized pointer, array, struct, string, index and member syntax is not executable. *)
 (* Source: strictly valid UTF-8 everywhere, including strings/comments.
    Logical order; RTL is a display concern. Identifier comparison is bytewise
    without Unicode normalization; the optional morphology layer cannot rewrite tokens. *)
@@ -19,7 +21,7 @@ space      = " " | TAB | CR | LF | U+200E | U+200F | U+061C ;
             (* CR, LF, CRLF are each one logical newline; columns count scalars. *)
 
 keyword    = "إذا" | "وإلا" | "طالما" | "أرجع" | "متغير" | "ثابت" | "دالة" | "هيكل" ;
-            (* if else while return var const function struct(extension, required for self-hosting) *)
+            (* if, else, while, return, variable, constant, function, struct *)
 COMMA      = "," | U+060C ;
 SEMI       = ";" | U+061B ;
 
@@ -56,7 +58,7 @@ shift      = additive  { ("<<" | ">>") additive } ;
 additive   = term      { ("+" | "-") term } ;
 term       = unary     { ("*" | "/" | "%") unary } ;
 unary      = ("-" | "!" | "~" | "*" | "&") unary | postfix ;
-postfix    = primary { "(" [ expr { COMMA expr } ] ")"   (* call; or conversion if callee is a type *)
+postfix    = primary { "(" [ expr { COMMA expr } ] ")"   (* call syntax; semantic checking requires a function name *)
                      | "[" expr "]"
                      | "." ident } ;
 primary    = intLit | strLit | ident | "(" expr ")" ;

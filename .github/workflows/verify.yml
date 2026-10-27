@@ -1,0 +1,16 @@
+name: Verify language and native compiler
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify locally reproducible gates
+        run: make -B verify-local

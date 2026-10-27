@@ -14,10 +14,7 @@ build/
 niyahlex
 niyahparse
 niyahrun
-niyah0
-niyah1
-niyah2
-niyah3
+niyahc
 
 # debug / editor
 core
@@ -34,3 +31,5 @@ tests/lexer_recovery_test
 tests/morph_test
 tests/parser_test
 tests/check_test
+
+tests/eval_test

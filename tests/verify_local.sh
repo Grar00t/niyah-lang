@@ -2,68 +2,58 @@
 set -eu
 cd "$(dirname "$0")/.."
 mkdir -p build/verify-local
+frontend="src/check.c src/parser.c src/lexer.c"
 
-# GCC's sanitizer runtime is available on the verified Kali machine.
-# A compiler being installed does not imply its ASan runtime is installed.
-if command -v gcc >/dev/null 2>&1; then
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -fsanitize=address,undefined -fno-omit-frame-pointer \
-        -o build/verify-local/lexer-gcc-asan tests/lexer_test.c src/lexer.c
-    ./build/verify-local/lexer-gcc-asan
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -fsanitize=address,undefined -fno-omit-frame-pointer \
-        -o build/verify-local/lexer-recovery-gcc-asan tests/lexer_recovery_test.c src/lexer.c
-    ./build/verify-local/lexer-recovery-gcc-asan
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -fsanitize=address,undefined -fno-omit-frame-pointer \
-        -o build/verify-local/morph-gcc-asan tests/morph_test.c src/morph.c
-    ./build/verify-local/morph-gcc-asan
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -fsanitize=address,undefined -fno-omit-frame-pointer \
-        -o build/verify-local/parser-gcc-asan tests/parser_test.c src/parser.c src/lexer.c
-    ./build/verify-local/parser-gcc-asan
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -fsanitize=address,undefined -fno-omit-frame-pointer         -o build/verify-local/check-gcc-asan tests/check_test.c src/check.c src/parser.c src/lexer.c
-    ./build/verify-local/check-gcc-asan
-    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -fsanitize=address,undefined -fno-omit-frame-pointer         -o build/verify-local/niyahrun-gcc-asan src/run_cli.c src/eval.c src/parser.c src/lexer.c
-    printf 'دالة رئيسية() -> صحيح { أرجع ٢ + ٣؛ }\n' > build/verify-local/run-five.نيه
-    test "$(./build/verify-local/niyahrun-gcc-asan build/verify-local/run-five.نيه)" = 'RESULT=5'
-    echo 'GCC_ASAN_UBSAN_PASS'
-else
-    echo 'FAIL: gcc is required for the sanitizer acceptance gate' >&2
+verify_compiler() {
+    compiler=$1
+    label=$2
+    extra=$3
+    flags="-std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror"
+    for suite in lexer lexer_recovery morph parser check eval; do
+        case "$suite" in
+            lexer|lexer_recovery) sources="src/lexer.c" ;;
+            morph) sources="src/morph.c" ;;
+            parser) sources="src/parser.c src/lexer.c" ;;
+            check) sources="$frontend" ;;
+            eval) sources="src/eval.c $frontend" ;;
+        esac
+        "$compiler" $flags $extra -o "build/verify-local/$suite-$label" \
+            "tests/${suite}_test.c" $sources
+        "./build/verify-local/$suite-$label"
+    done
+    "$compiler" $flags $extra -o "build/verify-local/niyahrun-$label" \
+        src/run_cli.c src/eval.c $frontend
+    "$compiler" $flags $extra -o "build/verify-local/niyahc-$label" \
+        src/compile_cli.c src/codegen.c $frontend
+    NIYAHRUN="./build/verify-local/niyahrun-$label" sh tests/run_cli_test.sh
+    NIYAHRUN="./build/verify-local/niyahrun-$label" \
+        NIYAHC="./build/verify-local/niyahc-$label" sh tests/native_cli_test.sh
+}
+
+command -v gcc >/dev/null 2>&1 || {
+    echo 'FAIL: gcc is required for the sanitizer gate' >&2
     exit 1
-fi
+}
+verify_compiler gcc gcc-asan '-fsanitize=address,undefined -fno-omit-frame-pointer'
+echo 'GCC_ASAN_UBSAN_PASS'
 
-if command -v clang >/dev/null 2>&1; then
-    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -o build/verify-local/lexer-clang tests/lexer_test.c src/lexer.c
-    ./build/verify-local/lexer-clang
-    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -o build/verify-local/lexer-recovery-clang tests/lexer_recovery_test.c src/lexer.c
-    ./build/verify-local/lexer-recovery-clang
-    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -o build/verify-local/morph-clang tests/morph_test.c src/morph.c
-    ./build/verify-local/morph-clang
-    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror \
-        -o build/verify-local/parser-clang tests/parser_test.c src/parser.c src/lexer.c
-    ./build/verify-local/parser-clang
-    clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -o build/verify-local/check-clang tests/check_test.c src/check.c src/parser.c src/lexer.c
-    ./build/verify-local/check-clang
-    clang -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror         -o build/verify-local/niyahrun-clang src/run_cli.c src/eval.c src/parser.c src/lexer.c
-    test "$(./build/verify-local/niyahrun-clang build/verify-local/run-five.نيه)" = 'RESULT=5'
-    echo 'CLANG_COMPILE_AND_TEST_PASS (Clang sanitizers not claimed)'
-fi
+command -v clang >/dev/null 2>&1 || {
+    echo 'FAIL: clang is required for the second-compiler gate' >&2
+    exit 1
+}
+verify_compiler clang clang ''
+echo 'CLANG_COMPILE_AND_TEST_PASS'
 
-if command -v readelf >/dev/null 2>&1; then
-    readelf -h niyahlex | grep -Fq 'ELF64'
-    readelf -h niyahparse | grep -Fq 'ELF64'
-    if readelf -d niyahlex | grep -q 'NEEDED' ||
-       readelf -d niyahparse | grep -q 'NEEDED'; then
-        echo 'FAIL: dynamic library dependency found' >&2
+command -v readelf >/dev/null 2>&1 || {
+    echo 'FAIL: readelf is required for ELF checks' >&2
+    exit 1
+}
+for binary in niyahlex niyahparse; do
+    readelf -h "$binary" | grep -Fq ELF64
+    if readelf -d "$binary" | grep -q NEEDED; then
+        echo "FAIL: dynamic dependency in $binary" >&2
         exit 1
     fi
-    echo 'ELF64_STATIC_CHECK_PASS'
-else
-    echo 'FAIL: readelf is required to check static ELF' >&2
-    exit 1
-fi
+done
+echo 'ELF64_STATIC_CHECK_PASS'
 echo 'LOCAL_VERIFY_PASS'

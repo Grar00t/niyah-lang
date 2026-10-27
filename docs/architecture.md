@@ -1,82 +1,66 @@
-# Niyah architecture
+# Implementation
 
-## Implemented boundary (updated 2026-10-27)
+The project targets Linux x86-64 and uses C11. Each invocation reads one
+source file.
 
-M0: freestanding C11 lexer and optional Arabic morphology annotation that
-never rewrites a programming-language token or identifier. M1: recursive-
-descent syntax parser, 1-based arena AST, bounded statement-boundary
-multi-error recovery, and canonical AST serialize/deserialize C APIs.
-The parser supports declarations, functions, structs, types, control flow
-and precedence. The standalone `niyahparse` is static Linux x86-64 ELF64,
-16,384-node arena, 128-frame parse limit, raw syscalls and no libc.
-
-Thirty valid and thirty invalid **inline** syntax cases, two recovery
-cases, eight AST round-trips, AST malformed-input guards, original golden
-token/AST outputs and GCC/Clang local checks pass. Serializer AST node
-indices are allocation details and are NOT canonical identifiers: compare
-ordered tree shapes and payload values. Serialization is not the human-
-readable `--ast` output; source positions are discarded. The remaining
-full standalone golden fixture coverage is not claimed.
-
-Neither freestanding tool generates native code. The hosted C11
-`niyahrun` interprets only a constant-return expression; it does not
-compile Niyah programs. The freestanding `niyahparse --check` now
-runs a narrow M2 scalar/scope checker. Full M2, IR, native codegen, ELF
-program emission and self-hosting remain unimplemented.
-Verification: `make verify-local`; GitHub Actions remains manual-only.
-See docs/M1_PARSER_2026-10-25.md.
-
-**Target compiler architecture, not yet implemented:** single binary, whole-program, one translation unit per run. Input: `.نيّة` files. Output: static ELF64 ET_EXEC. No `as`, no `ld`, no libc.
-
-## Pipeline
-
-```
-source bytes -> lexer -> parser -> AST -> typecheck -> IR (3AC, CFG) -> regalloc -> x86-64 encoder -> linker pass -> ELF
+```text
+UTF-8 source → lexer → parser → AST → scalar checker
+                                      ├─ interpreter → integer result
+                                      └─ x86-64 emitter → ELF executable
 ```
 
-| Stage | Input | Output | Data structure | Notes |
-|---|---|---|---|---|
-| Lexer | UTF-8 bytes | Token stream (pull, 1-token lookahead) | `Token{kind,line,col,start,len,value}` | Slices into source buffer; no copies. Keywords matched bytewise. |
-| Parser | tokens | AST | Recursive descent, precedence climbing | Implemented: bounded statement-level error synchronization with first-error diagnostic, max 128 nested frames. |
-| AST | parser | flat nodes | 1-based u32 first/last/next child links | Implemented: borrowed source-token slices, fixed arena, ordered children. |
-| Type checker | AST | Typed AST + symbol tables | Scope stack, struct table | Static, strict, no implicit coercion. Every conversion is `T(expr)`. Sizes and field offsets computed here. |
-| IR | typed AST | per-function CFG of basic blocks, 3AC | `Inst{op,dst,a,b,type}` in a flat array; blocks hold index ranges | Non-SSA, virtual registers, explicit loads/stores for address-taken vars. |
-| Codegen | IR | machine code bytes + fixups | Direct encoder (REX/ModRM/SIB), linear-scan regalloc | No text assembly stage. Calls use the System V integer ABI subset (rdi,rsi,rdx,rcx,r8,r9; rax ret). |
-| Linker pass | code, data, fixups | ELF64 | Symbol table of {name, section, offset}; fixup list {site, symbol, kind} | Resolves rel32 call/jmp/RIP-relative; lays out `.text` (R+X) and `.data/.bss` (RW) as two PT_LOAD segments; writes `e_entry` to `_start`. |
+| Files | Responsibility |
+| --- | --- |
+| `src/lexer.[ch]` | UTF-8 validation and language tokens |
+| `src/morph.[ch]` | Optional morphology candidates; outside compiler semantics |
+| `src/parser.[ch]` | Recursive-descent parser, precedence and arena AST |
+| `src/check.[ch]` | Scalar types, bindings, function signatures and return paths |
+| `src/eval.[ch]`, `src/run_cli.c` | Scalar interpreter and hosted CLI |
+| `src/codegen.[ch]`, `src/compile_cli.c` | Machine-code generation, ELF output and hosted CLI |
 
-Runtime: `_start` is emitted by the compiler (assembly stub, 6 instructions): align stack, call `رئيسية`, `exit_group(rax)`. System access is one intrinsic, `نداء_نظام(n,a,b,c,d,e,f)`, lowered to `syscall` with the kernel register convention (rdi,rsi,rdx,r10,r8,r9).
+## Front end
 
-## Decisions
+Tokens borrow slices of the input buffer. AST nodes use one-based arena
+indices and ordered child/sibling links; zero denotes an absent node.
+Source bytes and the arena must remain alive while any consumer uses them.
 
-**Linker pass: emit ELF directly vs. emit `.s` for an external assembler.** Direct emission removes `as`/`ld` from the trusted base and is required for a zero-dependency bootstrap; cost is a hand-written encoder (~600 lines for the instruction subset used). Chosen: direct emission. The encoder only needs ~25 instruction forms.
+The parser recognizes more syntax than the scalar checker accepts. The
+checker rejects unsupported forms, compares identifier bytes without
+normalization, predeclares function signatures and maintains lexical
+scopes. It checks exact argument counts/types and conservatively requires
+all paths in a value-returning function to return.
 
-**Source encoding: bytewise identifiers vs. NFC-normalised.** Normalisation needs Unicode tables (data dependency, large). Bytewise compare is deterministic and 10 lines. Chosen: bytewise; the same visual identifier typed with different code point sequences is two identifiers. The lexer rejects malformed UTF-8 and characters outside its accepted classes; a later lint pass may additionally flag U+0640 and visually confusable or presentation forms.
+The parser's C serialization API preserves ordered AST structure and token
+payloads, but not source positions or original formatting. The CLI's
+`--ast` output is a separate human-readable format.
 
-**Keyword set.** The seven specified keywords are insufficient for self-hosting (the compiler needs aggregates). `هيكل` (struct) is added as an eighth keyword. Everything else (types, `صواب`/`خطأ`, intrinsics) is predeclared identifiers in the root scope.
+## Execution
 
-## IR selection: SSA vs three-address vs stack
+The interpreter evaluates the checked AST. The native compiler emits
+x86-64 bytes and an ELF64 executable directly, with no external assembler,
+linker or LLVM backend. Compiler tools are built using the host C compiler;
+generated programs use Linux syscalls and do not link libc.
 
-| Property | SSA (LLVM IR, Cranelift CLIF, Go `cmd/compile/internal/ssa`) | Three-address, mutable vregs (GCC GIMPLE pre-SSA, Lua 5 register bytecode, lcc) | Stack (JVM bytecode, WebAssembly, chibicc-style push/pop emission) |
-|---|---|---|---|
-| Construction | Needs dominator tree, dominance frontiers, phi placement, renaming (Cytron et al.) or on-the-fly Braun et al. construction | Direct AST walk; one dst per instruction, variables are vregs assigned many times | Direct AST post-order walk, trivial |
-| Optimisation | Best: GVN, DCE, constant prop are single-pass over def-use | Needs reaching-defs / liveness dataflow for the same | Poor: must be lifted to registers first |
-| Register allocation | Needs phi elimination (parallel copies, critical-edge splitting) before or during allocation | Linear scan over live intervals; straightforward | Not needed for naive output; every value goes through memory/stack, ~3-5x more instructions |
-| Code size in the compiler | Largest. Roughly 2-3x the middle-end of 3AC | Medium | Smallest |
-| Self-hosting burden | Stage1 Niyah must express dominators, phi lists, use-lists: needs growable arrays, hash maps, worklists in a language that has only structs, pointers, arrays | Needs growable arrays and bitsets | Needs almost nothing |
-| Output quality | Good | Adequate: values live in regs between ops | Low |
-| Determinism for fixed point | Hash/worklist order must be pinned | Easy | Easy |
+Both execution paths support scalar locals/globals, constants, branches,
+loops and named calls. Initializers run in source order. An uninitialized
+local cannot be read; a global without an initializer becomes zero at its
+declaration. Reading a global before it has been initialized or assigned fails,
+including through a called function. Assigning a later global initializes
+it, but its declaration still runs when reached and replaces that value.
 
-**Commitment: three-address code, non-SSA, with basic blocks and virtual registers; linear-scan allocation.**
+Integer arithmetic checks signed overflow. Division by zero and shift
+counts outside 0–63 fail. Left shifts use checked signed arithmetic; right
+shifts are arithmetic. `&&` and `||` short-circuit. Execution has bounded
+statement fuel and call depth. Details and error codes are in the
+[language reference](language.md).
 
-Justification: the objective is a verifiable fixed point (`niyah2 == niyah3` byte-for-byte), not peak code quality. The compiler must be written in Niyah, so every data structure the middle-end needs becomes a feature stage0 must compile. SSA adds dominators, phis and parallel-copy lowering, which is the largest single chunk of non-essential code. A stack IR is smaller but forces either stack-machine codegen (chibicc-style, every temp via push/pop, 3-5x instruction bloat that also inflates the self-compile time and test surface) or a later stack-to-register lift, which is more work than building 3AC directly. 3AC keeps temporaries in vregs, gives linear scan something real to allocate, and leaves a clean upgrade path: converting the CFG to SSA later is a pass on top of this IR (Braun et al. construction works on exactly this representation) and does not touch the front end or the encoder.
+`niyahc` publishes a new output file and refuses to replace an existing
+path. Its generated entry point calls `رئيسية()` and exits with the result
+modulo 256. Runtime errors print a diagnostic and use a dedicated nonzero
+exit status.
 
-## Bootstrap chain
+## Verification
 
-| Stage | Binary | Built by | Source |
-|---|---|---|---|
-| 0 | `niyah0` | host `cc` (`make niyah0`) | `src/*.c` (C11, freestanding) |
-| 1 | `niyah1` | `niyah0` | `compiler/*.نيّة` |
-| 2 | `niyah2` | `niyah1` | `compiler/*.نيّة` |
-| 3 | `niyah3` | `niyah2` | `compiler/*.نيّة` |
-
-Self-hosting criterion: `cmp niyah2 niyah3` exits 0. `niyah1` may differ from `niyah2` (C-generated vs Niyah-generated code paths in the compiler itself do not matter; the emitted code for the same input must, so `niyah1` and `niyah2` are also required to emit identical output for every file in `tests/`). The host C compiler is trusted only for stage 0; after stage 2, `src/*.c` is frozen as the seed and never required again except to reproduce the chain from scratch.
+`make test` exercises language, CLI and execution behavior. `make
+verify-local` adds local sanitizer and Clang checks. Tests and diagnostic
+code are kept in `tests/`.

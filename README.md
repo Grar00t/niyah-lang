@@ -1,97 +1,80 @@
 # niyah-lang
 
-Target: self-hosting compiler for نيّة (Niyah), a statically typed language with Arabic keywords. Current implementation: C11 M0 lexer, M1 parser/AST, narrow M2 checker, and hosted experimental constant-expression execution. No native code generation yet.
+Niyah is an Arabic-keyword language implemented in C11 for Linux x86-64.
+It includes a lexer, parser, scalar type checker, interpreter and direct
+x86-64 ELF compiler.
 
-## Project statement
+## Build and run
 
-- Target: Linux x86-64. Output: static ELF64, raw syscalls, no runtime, no libc.
-- Backend: direct x86-64 code generation. No VM, no LLVM, no external assembler or linker.
-- Types: static, strict, no implicit coercion.
-- Self-hosting: the final compiler is produced by compiling its own Niyah source. Chain: `cc` -> `niyah0` (C) -> `niyah1` -> `niyah2` -> `niyah3`; success is `cmp niyah2 niyah3`. See `docs/architecture.md`.
-- Keywords: `إذا` if, `وإلا` else, `طالما` while, `أرجع` return, `متغير` var, `ثابت` const, `دالة` function, `هيكل` struct (extension required for self-hosting).
+Requires a C11 compiler and GNU Make. On Windows, use a Linux x86-64 WSL
+distribution.
 
-## Status
-
-M0 is implemented: Unicode-aware C11 lexer and optional Arabic morphology
-candidate analysis. M1 has a working syntax parser and arena-backed AST.
-This is NOT yet a native Niyah compiler: IR, code generation,
-executable emission and self-hosting remain unimplemented.
-M2 has a first, independently tested **scalar type and scope checker C API**:
-`checker_init` / `checker_run` in `src/check.[ch]`. It recognizes
-`صحيح`, `بايت`, `منطقي`, block scopes, locals, parameters, const
-assignment and strict scalar expressions. Duplicate function names and
-function/global name collisions are rejected by the same namespace.
-Full M2 is **NOT complete**:
-structs, pointers, arrays, definite initialization and type layouts remain
-open. `niyahparse --check` exposes only this supported M2 scalar/scope/call subset, failing on unsupported semantic constructs.
-M2 checks that non-void functions return on all provable paths (conservative).
-Named scalar function calls support exact argument counts/types, forward
-references, recursion and mutually recursive declarations. Void calls can
-appear as statements, but cannot supply a value. This is semantic checking
-only: the experimental runner still supports constant expressions only.
-Morphology never changes programming-language identifier identity.
-
-M1 now has 30 positive / 30 negative syntax fixtures, two multi-error
-recovery tests, and eight canonical AST serialize/deserialize round-trips.
-The internal C API retains AST structure and integer values but not original
-source positions. This is separate from the human-readable CLI `--ast`
-output; neither format can recreate the original source file.
-
-## Experimental constant-expression execution
-
-`make niyahrun` builds a **hosted Linux C11 AST interpreter** which runs only
-a zero-argument `رئيسية() -> صحيح` function containing exactly one
-`أرجع` constant integer expression. It supports +, -, *, /, %,
-unary minus and bitwise not. Integer overflow, division by zero,
-variable references, functions, branches and other unsupported constructs
-fail with an explicit diagnostic. It prints the result, e.g. `RESULT=5`;
-the tool exit status remains 0 on success, **not** the numeric result.
-This is not native Niyah machine code, complete execution or self-hosting.
-The runner exits 0 only after stdout flush succeeds; output errors exit 4
-(regression-tested using /dev/full on Linux).
-Run `make test` and `make verify-local` to check the supported slice.
-
-## Build
-
-Requires a C11 compiler, GNU Make and Linux x86-64:
-
-    make                  # builds two freestanding tools and hosted niyahrun
-    make test             # lexer, morphology, parser, M2, CLI and goldens
-    make verify-local     # tests + GCC ASan/UBSan + ordinary Clang tests
-
-    ./niyahlex FILE             # M0 language token dump
-    ./niyahlex --morph FILE     # optional raw-text morphology candidates
-    ./niyahlex --annotate FILE  # optional identifier annotations
-    ./niyahparse FILE           # syntax validation: OK or diagnostic
-    ./niyahparse --ast FILE     # deterministic indented AST
-    ./niyahparse --check FILE   # M2 scalar/scope check (strict subset)
-    ./niyahrun FILE            # hosted constant-expression interpreter
-
-Exit codes for niyahparse: 0 valid; 1 usage/file; 2 syntax/lexical error;
-3 output failure; 4 semantic error (--check mode only). Neither tool emits
-machine code for Niyah source, and niyahrun has a restricted interpreter.
-For limitations see docs/M1_PARSER_2026-10-25.md.
-GitHub Actions remains manual-only to avoid billing.
-
-
-## Layout
-
+```sh
+make
+make test
+make verify-local
 ```
-docs/architecture.md   pipeline, IR decision, bootstrap chain
-docs/grammar.ebnf      lexical + syntactic grammar
-docs/milestones.md     M0..M8 and the two-week plan
-src/lexer.[ch]         M0 compiler lexer
-src/morph.[ch]         opt-in morphology candidate layer
-src/parser.[ch]        M1 recursive descent and arena AST
-src/parser_cli.c       freestanding syntax, AST and narrow M2 check
-src/check.[ch]         scalar/scope/call semantic checker (M2 partial)
-src/eval.[ch]          hosted constant-expression evaluator
-src/run_cli.c          hosted experimental runner
-examples/              sample source programs
-tests/lex/             M0 golden lexer output
-tests/parse/           M1 golden AST output
-tests/parser_test.c    parser correctness, AST and bounds tests
+
+`examples/sum.niy`:
+
+```text
+دالة رئيسية() -> صحيح {
+    متغير مجموع: صحيح = ٠؛
+    متغير س: صحيح = ١؛
+    طالما (س <= ٥) {
+        مجموع = مجموع + س؛
+        س = س + ١؛
+    }
+    أرجع مجموع؛
+}
 ```
+
+```sh
+./niyahparse --check examples/sum.niy
+./niyahrun examples/sum.niy          # prints RESULT=15; tool exits 0
+./niyahc -o sum examples/sum.niy     # creates a new executable; refuses to overwrite
+./sum
+echo $?                   # prints 15
+```
+
+A generated program returns its main result as the process exit status
+modulo 256. Use the interpreter to display the full signed integer result.
+
+## Tools
+
+| Command | Purpose |
+| --- | --- |
+| `niyahlex FILE` | Print language tokens |
+| `niyahlex --annotate FILE` | Add optional morphology candidates for identifiers |
+| `niyahlex --morph FILE` | Analyze raw Arabic words |
+| `niyahparse FILE` | Validate syntax |
+| `niyahparse --ast FILE` | Print the syntax tree |
+| `niyahparse --check FILE` | Check scalar types, names, calls and returns |
+| `niyahrun FILE` | Interpret a scalar program and print its result |
+| `niyahc [-o OUTPUT] [--] FILE` | Compile to Linux x86-64 ELF; default output `a.out` |
+
+## Language support
+
+| Feature | Status |
+| --- | --- |
+| UTF-8 source, Arabic keywords, Arabic/Latin identifiers | Supported |
+| `صحيح`, `بايت`, `منطقي`; strict types without implicit conversions | Supported |
+| Globals, local variables, constants and nested scopes | Supported |
+| `إذا`, `وإلا`, `طالما`, `أرجع` | Supported |
+| Named functions, forward calls and recursion | Supported |
+| Checked integer arithmetic and short-circuit boolean operators | Supported |
+| Strings, structs, pointers, arrays, indexing and member access | Parsed; rejected by semantic checking |
+| Floating point, modules, input/output built-ins, self-hosting | Not implemented |
+
+See the [language reference](docs/language.md),
+[architecture](docs/architecture.md), [grammar](docs/grammar.ebnf) and
+[lexer/morphology reference](docs/tokenizer.md).
+
+## Verification
+
+`make test` runs the regression suites. `make verify-local` also runs local
+sanitizer and Clang checks. GitHub Actions is manual-only; pushing does not
+start a workflow.
 
 ## License
 
