@@ -19,7 +19,9 @@ generation, executable emission and self-hosting remain unimplemented.
 M2 has a first, independently tested **scalar type and scope checker C API**:
 `checker_init` / `checker_run` in `src/check.[ch]`. It recognizes
 `صحيح`, `بايت`, `منطقي`, block scopes, locals, parameters, const
-assignment and strict scalar expressions. Full M2 is **NOT complete**:
+assignment and strict scalar expressions. Duplicate function names and
+function/global name collisions are rejected by the same namespace.
+Full M2 is **NOT complete**:
 function calls, structs, pointers, arrays, flow-completeness, type layouts,
 and integration into the static `niyahparse` CLI remain open.
 Morphology never changes programming-language identifier identity.

@@ -23,6 +23,12 @@ int main(void){
  GOOD("byte identifier","دالة د(س: بايت) -> بايت { أرجع س؛ }");
  GOOD("global lookup","متغير س: صحيح = ١؛ دالة د() -> صحيح { أرجع س؛ }");
  GOOD("void function","دالة د() { أرجع؛ }");
+ GOOD("two distinct functions","دالة أ() { أرجع؛ } دالة ب() { أرجع؛ }");
+ BAD("duplicate functions","دالة د() { أرجع؛ } دالة د() { أرجع؛ }","duplicate symbol in scope");
+ BAD("function then variable","دالة د() { أرجع؛ } متغير د: صحيح = ١؛","duplicate symbol in scope");
+ BAD("variable then function","متغير د: صحيح = ١؛ دالة د() { أرجع؛ }","duplicate symbol in scope");
+ BAD("function used as value","دالة د() { أرجع؛ } دالة رئيسية() -> صحيح { أرجع د؛ }","function value requires call typing");
+ BAD("assignment to function","دالة د() { أرجع؛ } دالة رئيسية() { د = ١؛ }","cannot assign to function");
  BAD("undefined","دالة د() -> صحيح { أرجع غير_موجود؛ }","undefined identifier");
  BAD("duplicate","دالة د() { متغير س: صحيح؛ متغير س: صحيح؛ }","duplicate symbol in scope");
  BAD("duplicate global","متغير س: صحيح؛ ثابت س: صحيح = ١؛","duplicate symbol in scope");
@@ -37,6 +43,6 @@ int main(void){
  BAD("wrong bool","دالة د(س: صحيح) -> منطقي { أرجع س && س؛ }","boolean operands required");
  BAD("out of scope","دالة د() { { متغير س: صحيح؛ } س = ١؛ }","undefined identifier");
  if(count)return 1;
- puts("check_test: 7 positive, 13 negative M2 scalar/scope contracts PASS");
+ puts("check_test: 8 positive, 18 negative M2 scalar/scope contracts PASS");
  return 0;
 }

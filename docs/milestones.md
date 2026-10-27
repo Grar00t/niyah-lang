@@ -38,8 +38,8 @@ recovery, source-level AST dump/reparse, real compiler and M2 typing.
 
 **First C API slice (2026-10-27):** scalar built-in type names, lexical
 scopes, exact assignment/return/operand types, duplicate and undefined name
-diagnostics, const-write protection. `tests/check_test.c` verifies 7 valid
-and 13 invalid cases. GCC ASan/UBSan and Clang are in local verification.
+diagnostics, const-write protection. `tests/check_test.c` verifies 8 valid
+and 18 invalid cases (including top-level function name collisions). GCC ASan/UBSan and Clang are in local verification.
 
 **Not implemented:** user-defined structs/layout, pointer and array types,
 function calls, implicit conversions, missing-return analysis, complete

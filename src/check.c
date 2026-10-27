@@ -37,7 +37,7 @@ static CheckType declared(Checker *c,u32 node,u32 depth){
     }
     return error(c,node,"pointer, array and struct types require a later M2 stage");
 }
-static int insert(Checker *c,u32 id,CheckType type,u8 is_const){
+static int insert(Checker *c,u32 id,CheckType type,u8 is_const,u8 is_function){
     u32 i;
     Token name=at(c,id)->tok;
     for(i=c->count;i>0;i--){
@@ -46,7 +46,7 @@ static int insert(Checker *c,u32 id,CheckType type,u8 is_const){
         if(same(s->name,name)){error(c,id,"duplicate symbol in scope");return 0;}
     }
     if(c->count==CHECK_MAX_SYMBOLS){error(c,id,"symbol capacity exceeded");return 0;}
-    c->symbols[c->count++]=(CheckSymbol){name,type,c->scope,is_const};
+    c->symbols[c->count++]=(CheckSymbol){name,type,c->scope,is_const,is_function};
     return 1;
 }
 static CheckSymbol *find(Checker *c,Token name){
@@ -90,7 +90,9 @@ static CheckType expr(Checker *c,u32 id,u32 depth){
         case A_INT:return TY_I64;
         case A_NAME:
             symbol=find(c,n->tok);
-            return symbol?symbol->type:error(c,id,"undefined identifier");
+            if(!symbol)return error(c,id,"undefined identifier");
+            if(symbol->is_function)return error(c,id,"function value requires call typing");
+            return symbol->type;
         case A_BINARY:return binary(c,id,depth);
         case A_UNARY:
             a=first(c,id);
@@ -121,13 +123,14 @@ static void statement(Checker *c,u32 id,u32 depth,CheckType result_type){
             a=first(c,id);b=a?next(c,a):0;
             declared_type=declared(c,a,0);
             if(b){actual=expr(c,b,0);if(declared_type!=TY_ERROR && actual!=TY_ERROR && actual!=declared_type)error(c,id,"initializer type mismatch");}
-            if(declared_type!=TY_ERROR)insert(c,id,declared_type,n->kind==A_CONST);
+            if(declared_type!=TY_ERROR)insert(c,id,declared_type,n->kind==A_CONST,0);
             return;
         case A_ASSIGN:
             a=first(c,id);b=a?next(c,a):0;
             if(!a||at(c,a)->kind!=A_NAME){error(c,id,"invalid assignment target");return;}
             symbol=find(c,at(c,a)->tok);
             if(!symbol){error(c,a,"undefined identifier");return;}
+            if(symbol->is_function){error(c,id,"cannot assign to function");return;}
             if(symbol->is_const){error(c,id,"cannot assign to constant");return;}
             actual=expr(c,b,0);
             if(actual!=TY_ERROR && actual!=symbol->type)error(c,id,"assignment type mismatch");
@@ -170,12 +173,14 @@ int checker_run(Checker *c,u32 root){
     u32 id,part,body,p;
     CheckType ret;
     if(!c||!c->parser||!root||root>=c->parser->count || at(c,root)->kind!=A_PROGRAM)return 0;
-    /* Functions are recognized as declarations but call typing is deferred. */
+    /* Reserve top-level function names in the same namespace as globals.
+     * Function bodies are checked later; call typing remains unsupported. */
     id=first(c,root);
     while(id){
         const AstNode *n=at(c,id);
         if(n->kind==A_VAR || n->kind==A_CONST)statement(c,id,0,TY_VOID);
-        else if(n->kind!=A_FUNC)error(c,id,"struct checking not implemented in M2 slice");
+        else if(n->kind==A_FUNC)insert(c,id,TY_VOID,1,1);
+        else error(c,id,"struct checking not implemented in M2 slice");
         id=next(c,id);
     }
     id=first(c,root);
@@ -187,7 +192,7 @@ int checker_run(Checker *c,u32 root){
             while(part&&at(c,part)->kind==A_PARAM){
                 p=first(c,part);
                 ret=declared(c,p,0);
-                if(ret!=TY_ERROR)insert(c,part,ret,0);
+                if(ret!=TY_ERROR)insert(c,part,ret,0,0);
                 part=next(c,part);
             }
             ret=TY_VOID;
