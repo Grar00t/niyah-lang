@@ -1,87 +1,109 @@
-# niyah-lang
+# Niyah | Arabic to native code
 
-Niyah is an Arabic-keyword language implemented in C11 for Linux x86-64.
-It includes a lexer, parser, scalar type checker, interpreter and direct
-x86-64 ELF compiler.
+A C11 compiler for Arabic-keyword source on Linux x86-64. The production
+`niyahc` executable emits static ELF64 directly: no libc, dynamic loader,
+compiler subprocess, or machine-learning framework at compile/run time.
 
-## Build and run
+[Language](docs/language.md) / [Architecture](docs/architecture.md) /
+[Tensor AST](docs/TENSOR_AST.md) / [Verification](docs/VERIFICATION.md)
 
-Requires a C11 compiler and GNU Make. On Windows, use a Linux x86-64 WSL
-distribution.
-
-```sh
-make
-make test
-make verify-local
+```text
+UTF-8 source -> lexer -> arena AST
+                          |-- scalar checks -> x86-64 emitter
+                          `-- tensor intrinsics -> typed IR -> live intervals
+                                                -> allocation -> ISA dispatcher
+                                                               -> static ELF64
 ```
 
-`examples/sum.niy`:
+## Build the matched pair
+
+The native backend is a companion source repository, not a downloaded model.
+Keep both checkouts side by side. These review branches are not yet merged.
+
+```sh
+git clone --branch review/nexus-native-20261027 https://github.com/Grar00t/niyah-assembly-model.git
+git clone --branch review/nexus-ast-core-20261027 https://github.com/Grar00t/niyah-lang.git
+make -C niyah-lang -j2 all NIYAH_MODEL=../niyah-assembly-model
+make -C niyah-lang test-ast-tensor NIYAH_MODEL=../niyah-assembly-model
+```
+
+Build tools: Linux x86-64, GCC-compatible C11 compiler, GNU Make/binutils,
+and Python 3.10+ standard library. Windows users build inside WSL.
+Full verification additionally uses Clang, sanitizers, `timeout`, and
+parent-child `ptrace` permission. Nothing here needs MSVC, CUDA or PyTorch.
+Compatible source pins are in [integration-lock.json](docs/integration-lock.json).
+
+## Compile a tensor program
+
+The following example is checked into `examples/tensor_intrinsics.niyah`.
 
 ```text
 دالة رئيسية() -> صحيح {
-    متغير مجموع: صحيح = ٠؛
-    متغير س: صحيح = ١؛
-    طالما (س <= ٥) {
-        مجموع = مجموع + س؛
-        س = س + ١؛
-    }
-    أرجع مجموع؛
+    tensor_reserve(1);
+    متغير والكتاب: i8x16x64 = tensor_input_a();
+    متغير سيكتب: i8x64x16 = tensor_input_b();
+    ثابت نتيجة: i32x16x16 = tensor_gemm(والكتاب, سيكتب);
+    tensor_emit(نتيجة);
+    أرجع 0;
 }
 ```
 
 ```sh
-./niyahparse --check examples/sum.niy
-./niyahrun examples/sum.niy          # prints RESULT=15; tool exits 0
-./niyahc -o sum examples/sum.niy     # creates a new executable; refuses to overwrite
-./sum
-echo $?                   # prints 15
+cd niyah-lang
+./niyahc -o tensor.elf examples/tensor_intrinsics.niyah
+./tensor.elf features
 ```
 
-A generated program returns its main result as the process exit status
-modulo 256. Use the interpreter to display the full signed integer result.
+`features` prints a 64-byte binary capability record; it is not text.
+Normal tensor execution reads packed input matrices from stdin and writes
+INT32 output to stdout. The compiler refuses to overwrite an existing output.
+
+## Contracts
+
+| Surface | Supported behavior |
+| --- | --- |
+| Scalar language | Strict integer/byte/boolean types; functions, scopes, branches, loops and checked arithmetic |
+| Tensor language | One straight-line main; signed INT8 16x64 times 64x16 -> INT32 16x16 |
+| Register assignment | At most 64 values, 128 operations, 8 slots; half-open live intervals; no spills |
+| Arabic morphology | Original UTF-8 spans and candidate roots; never symbol aliases or trained embeddings |
+| Backend order | AMX -> AVX-512 -> AVX2 -> Scalar, after CPU and OS-state checks |
+| Published compiler | Static Linux ELF64; raw syscalls; no adjacent helper required |
+| Interpreter/tests | `niyahrun` and explicitly hosted test drivers may use libc |
+
+Dynamic tensor shapes, general scalar/tensor control-flow mixing, vision
+compression, self-hosting and bootable bare-metal deployment are not implemented.
+AMX and AVX-512 code is guarded, but its arithmetic has not been executed
+on supporting hardware in the recorded audit.
+
+## Verify
+
+```sh
+make test-ast-tensor
+make verify-local
+```
+
+Tests compare canonical IR, assembly text and complete ELF files with the
+reference sidecar; native results are compared with an independent C oracle.
+Failure cases cover invalid ASTs, exhausted registers, output errors and
+no-overwrite behavior. Historical measurements and their exact boundaries
+are in [Verification](docs/VERIFICATION.md); a hash proves identity, not quality.
+
+CI is manual-only. No push or pull-request workflow is enabled on this branch.
 
 ## Tools
 
-| Command | Purpose |
+| Tool | Role |
 | --- | --- |
-| `niyahlex FILE` | Print language tokens |
-| `niyahlex --annotate FILE` | Add optional morphology candidates for identifiers |
-| `niyahlex --morph FILE` | Analyze raw Arabic words |
-| `niyahparse FILE` | Validate syntax |
-| `niyahparse --ast FILE` | Print the syntax tree |
-| `niyahparse --check FILE` | Check scalar types, names, calls and returns |
-| `niyahrun FILE` | Interpret a scalar program and print its result |
-| `niyahc [-o OUTPUT] [--] FILE` | Compile to Linux x86-64 ELF; default output `a.out` |
+| `niyahlex` | Tokens, optional morphology annotations and raw-word analysis |
+| `niyahparse` | Syntax, AST display and scalar semantic checking |
+| `niyahrun` | Scalar interpreter; displays the full signed result |
+| `niyahc` | Unified scalar/tensor compiler; direct ELF publication |
+| `niyahc-tile` | Reference sidecar for build-time templates and parity tests |
 
-## Language support
-
-| Feature | Status |
-| --- | --- |
-| UTF-8 source, Arabic keywords, Arabic/Latin identifiers | Supported |
-| `صحيح`, `بايت`, `منطقي`; strict types without implicit conversions | Supported |
-| Globals, local variables, constants and nested scopes | Supported |
-| `إذا`, `وإلا`, `طالما`, `أرجع` | Supported |
-| Named functions, forward calls and recursion | Supported |
-| Checked integer arithmetic and short-circuit boolean operators | Supported |
-| Strings, structs, pointers, arrays, indexing and member access | Parsed; rejected by semantic checking |
-| Floating point, modules, input/output built-ins, self-hosting | Not implemented |
-
-See the [language reference](docs/language.md),
-[architecture](docs/architecture.md), [grammar](docs/grammar.ebnf) and
-[lexer/morphology reference](docs/tokenizer.md).
-
-## Verification
-
-`make test` runs the regression suites, compares full signed 64-bit native
-results with the interpreter, and separately checks the public 8-bit exit
-status. A test-only helper observes the unmodified program's exit-syscall
-argument using Linux `ptrace` on its own child. Tests require permission
-for parent-child tracing; unavailable tracing fails explicitly.
-
-`make verify-local` also builds and tests the host tools with GCC
-ASan/UBSan and ordinary Clang. The generated machine code is not sanitizer
-instrumented. GitHub Actions is manual-only; pushing does not start a workflow.
+A generated scalar program returns main's result modulo 256 as its process
+status. Tensor and scalar CLI error contracts are documented separately;
+legacy scalar codes are preserved. See [Tensor AST](docs/TENSOR_AST.md).
 
 ## License
 
-MIT.
+MIT. Included source provenance and license notices are retained.

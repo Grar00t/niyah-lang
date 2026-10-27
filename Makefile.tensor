@@ -1,0 +1,19 @@
+# Reference tensor sidecar used at build/test time by the unified compiler.
+TENSOR_BUILD ?= build/tensor_backend
+TENSOR_CFLAGS = -O2 -std=c11 -Wall -Wextra -Werror -ffreestanding -fno-builtin -fno-stack-protector -fno-pie -fno-tree-loop-distribute-patterns -fno-asynchronous-unwind-tables -mno-avx -mno-avx2 -I$(CURDIR)/src
+.PHONY: tensor-backend
+tensor-backend: niyahc-tile
+$(TENSOR_BUILD)/lexer.o: src/lexer.c src/lexer.h
+	mkdir -p $(TENSOR_BUILD)
+	$(CC) $(TENSOR_CFLAGS) -c $< -o $@
+$(TENSOR_BUILD)/morph.o: src/morph.c src/morph.h src/lexer.h
+	mkdir -p $(TENSOR_BUILD)
+	$(CC) $(TENSOR_CFLAGS) -c $< -o $@
+$(TENSOR_BUILD)/tensor_abi_check.o: src/tensor_abi_check.c src/lexer.h src/morph.h
+	mkdir -p $(TENSOR_BUILD)
+	$(CC) $(TENSOR_CFLAGS) -c $< -o $@
+$(TENSOR_BUILD)/tensor_ir_bridge.o: src/tensor_ir_bridge.s
+	mkdir -p $(TENSOR_BUILD)
+	$(AS) --64 -o $@ $<
+niyahc-tile: $(TENSOR_BUILD)/tensor_ir_bridge.o $(TENSOR_BUILD)/lexer.o $(TENSOR_BUILD)/morph.o $(TENSOR_BUILD)/tensor_abi_check.o
+	$(LD) -static --build-id=none -z noexecstack -o $@ $(TENSOR_BUILD)/tensor_ir_bridge.o $(TENSOR_BUILD)/lexer.o $(TENSOR_BUILD)/morph.o

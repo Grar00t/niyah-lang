@@ -1,3 +1,82 @@
+#ifdef NIYAH_TENSOR_CORE
+/* Unified compiler entry: direct syscalls, no external compiler subprocesses. */
+#include "codegen.h"
+#include "tensor_core.h"
+#include <stdint.h>
+#include <string.h>
+extern long niyah_sys6(long,long,long,long,long,long,long);
+#define SYS(n,a,b,c) niyah_sys6((n),(long)(a),(long)(b),(long)(c),0,0,0)
+enum { SOURCE_MAX=1<<20, NODES_MAX=4096, OUTPUT_MAX=2<<20, PATH_MAXIMUM=4096 };
+static u8 source[SOURCE_MAX+1],output[OUTPUT_MAX];static AstNode nodes[NODES_MAX];
+static int eq(const char *a,const char *b){size_t n=strlen(a);return n==strlen(b)&&!memcmp(a,b,n);}
+static int write_all(long fd,const void *p,size_t n){
+    const u8 *s=p;while(n){long v=SYS(1,fd,s,n);if(v==-4)continue;if(v<=0)return 0;s+=v;n-=(size_t)v;}return 1;
+}
+static void msg(const char *s){(void)write_all(2,s,strlen(s));}
+static void decimal(u32 v){char b[11];u32 i=10;b[i]=0;do{b[--i]=(char)('0'+v%10);v/=10;}while(v);msg(b+i);}
+static void diagnostic(const char *prefix,Token at,const char *s){msg(prefix);msg(": ");decimal(at.line);msg(":");decimal(at.col);msg(" ");msg(s?s:"compilation failed");msg("\n");}
+static int usage(void){msg("usage: niyahc [--emit-tensor-asm|--emit-tensor-ir] [-o OUTPUT] [--] FILE\n");return 1;}
+static u32 append_number(char *s,u32 at,u64 v){char b[21];u32 n=0;do{b[n++]=(char)('0'+v%10);v/=10;}while(v);while(n)s[at++]=b[--n];s[at]=0;return at;}
+/* O_EXCL temporary inode -> fsync -> no-replace hard link. Never opens destination. */
+static int publish(const char *path,const u8 *bytes,u32 n,int executable){
+    char tmp[PATH_MAXIMUM];size_t len=strlen(path);long fd=-1;int made=0,linked=0;
+    if(!len||len>sizeof(tmp)-48){msg("output: invalid path length\n");return 0;}
+    memcpy(tmp,path,len);memcpy(tmp+len,".tmp.",5);u32 start=append_number(tmp,(u32)len+5,(u64)SYS(39,0,0,0));tmp[start++]='.';
+    for(u32 i=0;i<32;i++){
+        append_number(tmp,start,i);fd=SYS(2,tmp,0xA00C1,0600); /* WRONLY|CREAT|EXCL|NOFOLLOW|CLOEXEC */
+        if(fd>=0){made=1;break;}if(fd!=-17)break;
+    }
+    if(fd<0){msg("output: exclusive temporary creation failed\n");return 0;}
+    int ok=write_all(fd,bytes,n);
+    if(ok&&SYS(91,fd,executable?0755:0644,0)<0)ok=0;
+    if(ok&&SYS(74,fd,0,0)<0)ok=0;
+    if(SYS(3,fd,0,0)<0)ok=0;
+    if(ok&&SYS(86,tmp,path,0)==0)linked=1;
+    if(made&&SYS(87,tmp,0,0)<0&&linked)msg("warning: executable published; temporary cleanup failed\n");
+    if(!linked)msg("output: write or no-replace publication failed\n");
+    return linked;
+}
+int main(int argc,char **argv){
+    const char *input=0,*destination="a.out";int options=1,have_output=0,mode=0;
+    static const u64 ignore_sigpipe[4]={1,0,0,0};
+    if(niyah_sys6(13,13,(long)ignore_sigpipe,0,8,0,0)<0)return 74;
+    for(int i=1;i<argc;i++){
+        if(options&&eq(argv[i],"--")){options=0;continue;}
+        if(options&&eq(argv[i],"-o")){if(have_output||++i>=argc||!argv[i][0])return usage();destination=argv[i];have_output=1;continue;}
+        if(options&&(eq(argv[i],"--emit-tensor-asm")||eq(argv[i],"--emit-tensor-ir"))){if(mode)return usage();mode=eq(argv[i],"--emit-tensor-asm")?1:2;continue;}
+        if((options&&argv[i][0]=='-')||input||!argv[i][0])return usage();
+        input=argv[i];
+    }
+    if(!input)return usage();
+    long fd=SYS(2,input,0x80000,0);if(fd<0){msg("input: read failed\n");return mode?66:1;}
+    u32 n=0;int bad=0;
+    while(n<sizeof(source)){
+        long v=SYS(0,fd,source+n,sizeof(source)-n);if(v==-4)continue;if(v<0){bad=1;break;}if(!v)break;n+=(u32)v;
+    }
+    if(SYS(3,fd,0,0)<0)bad=1;
+    if(bad||n>SOURCE_MAX){msg("error: source read failed or exceeds 1 MiB\n");return mode?66:1;}
+    Parser p;CodegenResult result;parser_init(&p,nodes,NODES_MAX,source,n);u32 root=parser_parse(&p);
+    if(!root){diagnostic("syntax",p.error_at,p.error);return p.has_tensor||mode?65:2;}
+    u32 length=0;
+    if(mode){
+        if(!p.has_tensor){msg("tensor: expected tensor AST\n");return 65;}
+        if(!tensor_prepare(&p,root,&result)){diagnostic("tensor",result.at,result.error);return result.exit_code?result.exit_code:65;}
+        length=mode==1?tensor_export_asm(output,sizeof(output)):tensor_export_ir(output,sizeof(output));
+        if(!length){msg("tensor: emission capacity exceeded\n");return 65;}
+    } else {
+        if(!codegen_elf64(&p,root,output,sizeof(output),&result)){
+            diagnostic(p.has_tensor?"tensor":result.semantic_error?"semantic":"codegen",result.at,result.error);
+            return result.exit_code?result.exit_code:result.semantic_error?3:4;
+        }
+        length=result.size;
+    }
+    if(mode&&!have_output)return write_all(1,output,length)?0:74;
+    return publish(destination,output,length,!mode)?0:(p.has_tensor?74:1);
+}
+
+#else
+/* Hosted scalar-only driver retained for existing mutation/sanitizer harnesses.
+ * The production niyahc target always defines NIYAH_TENSOR_CORE. */
 #define _POSIX_C_SOURCE 200809L
 #include "codegen.h"
 #include <errno.h>
@@ -92,3 +171,5 @@ int main(int argc,char **argv) {
     if(!publish(destination,output,result.size)){perror("output");return 1;}
     return 0;
 }
+
+#endif

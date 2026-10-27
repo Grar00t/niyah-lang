@@ -5,12 +5,26 @@ static const char *const AST_NAMES[] = {
     "NONE", "PROGRAM", "FUNC", "STRUCT", "PARAM", "FIELD", "VAR", "CONST",
     "TYPE_NAME", "TYPE_PTR", "TYPE_ARRAY", "BLOCK", "IF", "WHILE", "RETURN",
     "EXPR_STMT", "ASSIGN", "BINARY", "UNARY", "CALL", "INDEX", "MEMBER",
-    "NAME", "INT", "STRING"
+    "NAME", "INT", "STRING", "TENSOR_OP"
 };
 const char *ast_name(AstKind k) {
     return (u32)k < sizeof AST_NAMES / sizeof AST_NAMES[0] ? AST_NAMES[k] : "?";
 }
 
+static int tensor_word(Token t, const char *s) {
+    u32 i=0; if(!t.start) return 0;
+    while(s[i]) { if(i>=t.len || t.start[i]!=(u8)s[i]) return 0; i++; }
+    return i==t.len;
+}
+static u32 tensor_opcode(Token t, int compat) {
+    if(t.kind!=T_IDENT) return 0;
+    if(tensor_word(t,compat?"input_a":"tensor_input_a"))return TI_INPUT_A;
+    if(tensor_word(t,compat?"input_b":"tensor_input_b"))return TI_INPUT_B;
+    if(tensor_word(t,compat?"gemm":"tensor_gemm"))return TI_GEMM;
+    if(tensor_word(t,compat?"emit":"tensor_emit"))return TI_EMIT;
+    if(tensor_word(t,compat?"reserve":"tensor_reserve"))return TI_RESERVE;
+    return 0;
+}
 static u32 fail(Parser *p, const char *reason) {
     p->error_count++;
     if (!p->error) {
@@ -74,6 +88,7 @@ void parser_init(Parser *p, AstNode *arena, u32 capacity, const u8 *src, u64 len
         p->error_count = 1;
         return;
     }
+    p->source=src; p->source_len=len;
     lex_init(&p->lex, src, len);
     p->look = lex_next(&p->lex);
 }
@@ -163,6 +178,15 @@ static u32 parse_postfix(Parser *p) {
                 } while (1);
             }
             if (!need(p, T_RPAREN, "expected ')' after arguments")) return 0;
+            if(p->nodes[left].kind==A_NAME) {
+                u32 intrinsic=tensor_opcode(p->nodes[left].tok,0);
+                if(intrinsic) {
+                    p->nodes[wrapper].kind=A_TENSOR_OP;
+                    p->nodes[wrapper].tok=p->nodes[left].tok;
+                    p->nodes[wrapper].tensor.opcode=intrinsic;
+                    p->has_tensor=1;
+                }
+            }
         } else if (t.kind == T_LBRACK) {
             wrapper = node(p, A_INDEX, t);
             expr = parse_expr(p, 1);
@@ -386,6 +410,30 @@ static u32 parse_block(Parser *p) {
     return result;
 }
 
+/* Compatibility syntax is parsed into the SAME arena, never a sidecar call. */
+static u32 parse_tensor_compat(Parser *p) {
+    Token op=take(p), t; u32 n,part,k=tensor_opcode(op,1);
+    if(!k)return fail(p,"unknown tensor intrinsic");
+    n=node(p,A_TENSOR_OP,op);if(!n)return 0;
+    p->nodes[n].tensor.opcode=k;p->nodes[n].tensor.syntax=1;p->has_tensor=1;
+    if(k==TI_RESERVE) {
+        if(p->look.kind!=T_INT)return fail(p,"expected reserved tile mask");
+        t=take(p);part=node(p,A_INT,t);if(!child(p,n,part))return 0;
+    } else {
+        if(p->look.kind!=T_IDENT)return fail(p,"expected tensor identifier");
+        t=take(p);part=node(p,A_NAME,t);if(!child(p,n,part))return 0;
+        if(k==TI_GEMM) {
+            if(!need(p,T_ASSIGN,"expected tensor assignment"))return 0;
+            if(p->look.kind!=T_IDENT)return fail(p,"expected left tensor");
+            t=take(p);part=node(p,A_NAME,t);if(!child(p,n,part))return 0;
+            if(!need(p,T_STAR,"expected tensor contraction"))return 0;
+            if(p->look.kind!=T_IDENT)return fail(p,"expected right tensor");
+            t=take(p);part=node(p,A_NAME,t);if(!child(p,n,part))return 0;
+        }
+    }
+    return need(p,T_SEMI,"expected ';' after tensor intrinsic")?n:0;
+}
+
 u32 parser_parse(Parser *p) {
     Token first;
     u32 result, decl;
@@ -395,6 +443,7 @@ u32 parser_parse(Parser *p) {
     if (!result) return 0;
     while (p->look.kind != T_EOF) {
         switch (p->look.kind) {
+        case T_IDENT: decl = parse_tensor_compat(p); break;
         case K_FUNC: decl = parse_function(p); break;
         case K_STRUCT: decl = parse_struct(p); break;
         case K_VAR: case K_CONST: decl = parse_variable(p); break;
@@ -430,7 +479,7 @@ static int kind_has_payload(AstKind k) {
     case A_FUNC: case A_STRUCT: case A_PARAM: case A_FIELD:
     case A_VAR: case A_CONST: case A_NAME: case A_MEMBER:
     case A_TYPE_NAME: case A_TYPE_ARRAY: case A_INT: case A_STRING:
-    case A_BINARY: case A_UNARY: case A_ASSIGN:
+    case A_BINARY: case A_UNARY: case A_ASSIGN: case A_TENSOR_OP:
         return 1;
     default: return 0;
     }
@@ -469,7 +518,7 @@ static void em_node(EmitCtx *c, const Parser *p, u32 id, u32 depth) {
         c->failed = 1; return;
     }
     n = &p->nodes[id];
-    if (n->kind <= A_NONE || n->kind > A_STRING) { c->failed = 1; return; }
+    if (n->kind <= A_NONE || n->kind > A_TENSOR_OP) { c->failed = 1; return; }
     em(c, "(", 1);
     ems(c, ast_name(n->kind));
     if (kind_has_payload(n->kind)) {
@@ -521,7 +570,7 @@ static int dskind(DesCtx *c, AstKind *out) {
            c->text[c->pos] != ')' && c->text[c->pos] != '\n' &&
            c->text[c->pos] != '\r' && c->text[c->pos] != '\t') c->pos++;
     u32 n = c->pos - start;
-    for (int k = 1; k <= (int)A_STRING; k++) {
+    for (int k = 1; k <= (int)A_TENSOR_OP; k++) {
         const char *name = ast_name((AstKind)k);
         if (rt_len(name) == n && rt_eq(name, c->text + start, n)) {
             *out = (AstKind)k; return 1;
@@ -584,6 +633,12 @@ static u32 ds_node(DesCtx *c, Parser *p, u32 depth) {
             if (tok.kind != want || tok.start != c->pay + ts ||
                 tok.len != tl || lex_next(&lexer).kind != T_EOF) return 0;
             p->nodes[id].tok = tok;
+            if(kind==A_TENSOR_OP) {
+                u32 op=tensor_opcode(tok,0);p->nodes[id].tensor.syntax=0;
+                if(!op){op=tensor_opcode(tok,1);p->nodes[id].tensor.syntax=1;}
+                if(!op)return 0;
+                p->nodes[id].tensor.opcode=op;p->has_tensor=1;
+            }
         }
     }
     while (1) {

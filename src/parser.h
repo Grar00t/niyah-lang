@@ -13,13 +13,18 @@ typedef enum {
     A_TYPE_NAME, A_TYPE_PTR, A_TYPE_ARRAY,
     A_BLOCK, A_IF, A_WHILE, A_RETURN, A_EXPR_STMT, A_ASSIGN,
     A_BINARY, A_UNARY, A_CALL, A_INDEX, A_MEMBER,
-    A_NAME, A_INT, A_STRING
+    A_NAME, A_INT, A_STRING, A_TENSOR_OP
 } AstKind;
+
+/* Fixed-shape intrinsics: metadata is a lowering-context index, not an embedding. */
+typedef enum { TI_NONE, TI_INPUT_A, TI_INPUT_B, TI_GEMM, TI_EMIT, TI_RESERVE } TensorIntrinsic;
+typedef struct { u32 opcode, metadata, syntax; } Node_TensorOp;
 
 typedef struct {
     AstKind kind;
     Token tok;              /* original source token; operators retain TokKind */
     u32 first, last, next;   /* ordered children / next sibling; indices, not pointers */
+    Node_TensorOp tensor;
 } AstNode;
 
 typedef struct {
@@ -29,6 +34,9 @@ typedef struct {
     u32 count, capacity, depth;   /* node 0 is reserved */
     u32 error_count;               /* number of diagnostics recorded */
     const char *error;
+    const u8 *source;
+    u64 source_len;
+    u32 has_tensor;
 } Parser;
 
 void parser_init(Parser *p, AstNode *arena, u32 capacity,

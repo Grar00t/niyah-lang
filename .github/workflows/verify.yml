@@ -1,4 +1,4 @@
-name: Verify language and native compiler
+name: Verify native source pair
 
 on:
   workflow_dispatch:
@@ -9,8 +9,19 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify locally reproducible gates
-        run: make -B verify-local
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: niyah-lang
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Grar00t/niyah-assembly-model
+          ref: 0fbc64a13a30d2a31d7bdbf4892b3d65b0eda93c
+          path: niyah-assembly-model
+          persist-credentials: false
+      - name: Build reference allocator
+        run: make -C niyah-assembly-model tile-allocator
+      - name: Run local verification gates
+        run: make -C niyah-lang verify-local NIYAH_MODEL=../niyah-assembly-model
