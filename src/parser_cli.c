@@ -1,10 +1,12 @@
 /* Niyah M1 CLI. Linux x86-64 ELF, no libc, raw syscalls. */
 #include "parser.h"
+#include "check.h"
 
 enum { SYS_READ = 0, SYS_WRITE = 1, SYS_OPEN = 2, SYS_EXIT_GROUP = 231 };
 enum { SOURCE_CAP = 1 << 22, AST_CAP = 16384, OUT_CAP = 16384 };
 static u8 source[SOURCE_CAP];
 static AstNode ast[AST_CAP];
+static Checker semantic;
 static char out[OUT_CAP];
 static u32 outlen;
 
@@ -89,17 +91,19 @@ static void dump(const Parser *p, u32 root) {
     }
 }
 __attribute__((noreturn, used)) static void entry(long argc, char **argv) {
-    int show_ast = 0;
+    int show_ast = 0, check_types = 0;
     const char *file;
     i64 fd, total = 0, got = 0;
     Parser parser;
     u32 root;
     if (argc == 3 && equals(argv[1], "--ast")) {
         show_ast = 1; file = argv[2];
+    } else if (argc == 3 && equals(argv[1], "--check")) {
+        check_types = 1; file = argv[2];
     } else if (argc == 2 && argv[1][0] != '-') {
         file = argv[1];
     } else {
-        str("usage: niyahparse [--ast] FILE\n"); flush(); quit(1);
+        str("usage: niyahparse [--ast|--check] FILE\n"); flush(); quit(1);
     }
     fd = syscall3(SYS_OPEN, (i64)file, 0, 0);
     if (fd < 0) {
@@ -135,6 +139,17 @@ __attribute__((noreturn, used)) static void entry(long argc, char **argv) {
             str(" (got "); str(tok_name(parser.error_at.kind)); str(")");
         }
         str("\n"); flush(); quit(2);
+    }
+    if (check_types) {
+        checker_init(&semantic, &parser);
+        if (!checker_run(&semantic, root)) {
+            str("type:"); num(semantic.at.line); str(":");
+            num(semantic.at.col); str(": ");
+            str(semantic.message ? semantic.message : "unsupported semantic form");
+            str("\n"); flush(); quit(4);
+        }
+        str("OK M2 checked_nodes="); num(semantic.checked_nodes);
+        str("\n"); flush(); quit(0);
     }
     str("OK M1 nodes="); num(parser.count - 1); str("\n");
     if (show_ast) dump(&parser, root);

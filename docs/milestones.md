@@ -41,9 +41,13 @@ scopes, exact assignment/return/operand types, duplicate and undefined name
 diagnostics, const-write protection. `tests/check_test.c` verifies 8 valid
 and 18 invalid cases (including top-level function name collisions). GCC ASan/UBSan and Clang are in local verification.
 
+**Usable CLI slice (2026-10-27):** `niyahparse --check FILE` runs
+the current narrow semantic checker in the freestanding ELF64 binary.
+M1 syntax and AST CLI modes remain unchanged; semantic errors exit 4.
+
 **Not implemented:** user-defined structs/layout, pointer and array types,
 function calls, implicit conversions, missing-return analysis, complete
-semantic typed dumps and integration into the freestanding CLI. No native
+semantic typed dumps beyond the scalar/scope subset. No native
 program generation. See `docs/M2_SCALAR_2026-10-27.md`.
 
 - Input: AST.
@@ -91,8 +95,9 @@ program generation. See `docs/M2_SCALAR_2026-10-27.md`.
 
 The following table is the original proposed sequencing, not a verified
 14-day delivery estimate or completion claim. The only verified deliverables
-are the M0 toolchain and the first M1 parser/AST slice. M2 through M8 are
-still unimplemented and no delivery dates are committed.
+are the M0/M1 toolchain, a narrow M2 semantic checker, and the separate
+hosted constant-expression evaluator. Full M2 through M8 remain incomplete;
+no delivery dates are committed.
 
 | Day | Artifacts |
 |---|---|

@@ -18,8 +18,11 @@ ordered tree shapes and payload values. Serialization is not the human-
 readable `--ast` output; source positions are discarded. The remaining
 full standalone golden fixture coverage is not claimed.
 
-Neither tool compiles or executes Niyah source. M2 typing, IR, native
-codegen, ELF program emission and self-hosting remain unimplemented.
+Neither freestanding tool generates native code. The hosted C11
+`niyahrun` interprets only a constant-return expression; it does not
+compile Niyah programs. The freestanding `niyahparse --check` now
+runs a narrow M2 scalar/scope checker. Full M2, IR, native codegen, ELF
+program emission and self-hosting remain unimplemented.
 Verification: `make verify-local`; GitHub Actions remains manual-only.
 See docs/M1_PARSER_2026-10-25.md.
 

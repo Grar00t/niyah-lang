@@ -9,8 +9,8 @@ all: niyahlex niyahparse niyahrun
 niyahlex: src/lexer.c src/lexer.h src/morph.c src/morph.h
 	$(CC) $(CFLAGS) -DNIYAH_LEXER_STANDALONE $(LDFLAGS) -o $@ src/lexer.c src/morph.c
 
-niyahparse: src/parser_cli.c src/parser.c src/parser.h src/lexer.c src/lexer.h
-	$(CC) $(CFLAGS) -Werror $(LDFLAGS) -o $@ src/parser_cli.c src/parser.c src/lexer.c
+niyahparse: src/parser_cli.c src/parser.c src/parser.h src/check.c src/check.h src/lexer.c src/lexer.h
+	$(CC) $(CFLAGS) -Werror $(LDFLAGS) -o $@ src/parser_cli.c src/parser.c src/check.c src/lexer.c
 
 niyahrun: src/run_cli.c src/eval.c src/eval.h src/parser.c src/parser.h src/lexer.c src/lexer.h
 	$(CC) -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -o $@ src/run_cli.c src/eval.c src/parser.c src/lexer.c
@@ -41,6 +41,7 @@ test: niyahlex niyahparse niyahrun tests/lexer_test tests/lexer_recovery_test te
 	sh tests/cli_test.sh
 	sh tests/morph_whitespace_test.sh
 	sh tests/parser_cli_test.sh
+	sh tests/check_cli_test.sh
 	sh tests/run_cli_test.sh
 	./niyahparse --ast examples/مرحبا.نيّة > tests/parse/مرحبا.actual
 	cmp tests/parse/مرحبا.expected tests/parse/مرحبا.actual

@@ -1,6 +1,6 @@
 # niyah-lang
 
-Target: self-hosting compiler for نيّة (Niyah), a statically typed language with Arabic keywords. Current implementation: C11 M0 lexer and M1 parser. No generated native program yet.
+Target: self-hosting compiler for نيّة (Niyah), a statically typed language with Arabic keywords. Current implementation: C11 M0 lexer, M1 parser/AST, narrow M2 checker, and hosted experimental constant-expression execution. No native code generation yet.
 
 ## Project statement
 
@@ -14,16 +14,17 @@ Target: self-hosting compiler for نيّة (Niyah), a statically typed language 
 
 M0 is implemented: Unicode-aware C11 lexer and optional Arabic morphology
 candidate analysis. M1 has a working syntax parser and arena-backed AST.
-This is NOT yet a native Niyah compiler: M2 type checking, IR, code
-generation, executable emission and self-hosting remain unimplemented.
+This is NOT yet a native Niyah compiler: IR, code generation,
+executable emission and self-hosting remain unimplemented.
 M2 has a first, independently tested **scalar type and scope checker C API**:
 `checker_init` / `checker_run` in `src/check.[ch]`. It recognizes
 `صحيح`, `بايت`, `منطقي`, block scopes, locals, parameters, const
 assignment and strict scalar expressions. Duplicate function names and
 function/global name collisions are rejected by the same namespace.
 Full M2 is **NOT complete**:
-function calls, structs, pointers, arrays, flow-completeness, type layouts,
-and integration into the static `niyahparse` CLI remain open.
+function calls, structs, pointers, arrays, flow-completeness and type
+layouts remain open. `niyahparse --check` exposes only this supported
+M2 scalar/scope subset, failing on unsupported semantic constructs.
 Morphology never changes programming-language identifier identity.
 
 M1 now has 30 positive / 30 negative syntax fixtures, two multi-error
@@ -50,8 +51,8 @@ Run `make test` and `make verify-local` to check the supported slice.
 
 Requires a C11 compiler, GNU Make and Linux x86-64:
 
-    make                  # builds both freestanding, static ELF tools
-    make test             # lexer, morphology, parser, CLI and golden AST
+    make                  # builds two freestanding tools and hosted niyahrun
+    make test             # lexer, morphology, parser, M2, CLI and goldens
     make verify-local     # tests + GCC ASan/UBSan + ordinary Clang tests
 
     ./niyahlex FILE             # M0 language token dump
@@ -59,9 +60,12 @@ Requires a C11 compiler, GNU Make and Linux x86-64:
     ./niyahlex --annotate FILE  # optional identifier annotations
     ./niyahparse FILE           # syntax validation: OK or diagnostic
     ./niyahparse --ast FILE     # deterministic indented AST
+    ./niyahparse --check FILE   # M2 scalar/scope check (strict subset)
+    ./niyahrun FILE            # hosted constant-expression interpreter
 
 Exit codes for niyahparse: 0 valid; 1 usage/file; 2 syntax/lexical error;
-3 failed output write. This parses source but does NOT generate executables.
+3 output failure; 4 semantic error (--check mode only). Neither tool emits
+machine code for Niyah source, and niyahrun has a restricted interpreter.
 For limitations see docs/M1_PARSER_2026-10-25.md.
 GitHub Actions remains manual-only to avoid billing.
 
@@ -75,7 +79,10 @@ docs/milestones.md     M0..M8 and the two-week plan
 src/lexer.[ch]         M0 compiler lexer
 src/morph.[ch]         opt-in morphology candidate layer
 src/parser.[ch]        M1 recursive descent and arena AST
-src/parser_cli.c       freestanding syntax checker / AST dumper
+src/parser_cli.c       freestanding syntax, AST and narrow M2 check
+src/check.[ch]         scalar/scope semantic checker (M2 partial)
+src/eval.[ch]          hosted constant-expression evaluator
+src/run_cli.c          hosted experimental runner
 examples/              sample source programs
 tests/lex/             M0 golden lexer output
 tests/parse/           M1 golden AST output

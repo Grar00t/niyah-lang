@@ -42,7 +42,25 @@ int main(void){
  BAD("wrong compare","دالة د(س: بايت) -> منطقي { أرجع س > ١؛ }","integer comparison required");
  BAD("wrong bool","دالة د(س: صحيح) -> منطقي { أرجع س && س؛ }","boolean operands required");
  BAD("out of scope","دالة د() { { متغير س: صحيح؛ } س = ١؛ }","undefined identifier");
+ /* A Checker is reusable after explicitly resetting its live metadata. */
+ {
+   static const char invalid[]="دالة د() -> صحيح { أرجع مجهول؛ }";
+   static const char valid[]="دالة د() -> صحيح { أرجع ١؛ }";
+   Parser p;
+   Checker c;
+   u32 root;
+   parser_init(&p,arena,16384,(const u8 *)invalid,sizeof(invalid)-1);
+   root=parser_parse(&p);
+   if(!root){count++;}else {
+     checker_init(&c,&p);
+     if(checker_run(&c,root)||!c.errors)count++;
+   }
+   parser_init(&p,arena,16384,(const u8 *)valid,sizeof(valid)-1);
+   root=parser_parse(&p);
+   checker_init(&c,&p);
+   if(!root||!checker_run(&c,root)||c.errors||c.count!=1||c.scope)count++;
+ }
  if(count)return 1;
- puts("check_test: 8 positive, 18 negative M2 scalar/scope contracts PASS");
+ puts("check_test: 8 positive, 18 negative, checker reset contract PASS");
  return 0;
 }

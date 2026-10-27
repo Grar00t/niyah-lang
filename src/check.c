@@ -16,7 +16,22 @@ const char *checker_type_name(CheckType t) {
     switch(t) {case TY_I64:return "صحيح";case TY_BYTE:return "بايت";
     case TY_BOOL:return "منطقي";case TY_VOID:return "void";default:return "error";}
 }
-void checker_init(Checker *c,const Parser *p){*c=(Checker){0};c->parser=p;}
+/* Reset only live metadata. Unused symbol slots are never read (count=0).
+ * A whole-struct zero init can emit a libc memset on freestanding targets. */
+void checker_init(Checker *c,const Parser *p){
+    c->parser=p;
+    c->count=0;
+    c->scope=0;
+    c->errors=0;
+    c->checked_nodes=0;
+    c->message=0;
+    c->at.kind=T_EOF;
+    c->at.line=0;
+    c->at.col=0;
+    c->at.start=0;
+    c->at.len=0;
+    c->at.value=0;
+}
 static CheckType error(Checker *c,u32 id,const char *why) {
     if(!c->errors){c->message=why;c->at=c->parser->nodes[id].tok;}
     c->errors++;
