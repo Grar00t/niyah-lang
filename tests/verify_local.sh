@@ -24,6 +24,9 @@ if command -v gcc >/dev/null 2>&1; then
     ./build/verify-local/parser-gcc-asan
     gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -fsanitize=address,undefined -fno-omit-frame-pointer         -o build/verify-local/check-gcc-asan tests/check_test.c src/check.c src/parser.c src/lexer.c
     ./build/verify-local/check-gcc-asan
+    gcc -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -fsanitize=address,undefined -fno-omit-frame-pointer         -o build/verify-local/niyahrun-gcc-asan src/run_cli.c src/eval.c src/parser.c src/lexer.c
+    printf 'دالة رئيسية() -> صحيح { أرجع ٢ + ٣؛ }\n' > build/verify-local/run-five.نيه
+    test "$(./build/verify-local/niyahrun-gcc-asan build/verify-local/run-five.نيه)" = 'RESULT=5'
     echo 'GCC_ASAN_UBSAN_PASS'
 else
     echo 'FAIL: gcc is required for the sanitizer acceptance gate' >&2
@@ -45,6 +48,8 @@ if command -v clang >/dev/null 2>&1; then
     ./build/verify-local/parser-clang
     clang -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror         -o build/verify-local/check-clang tests/check_test.c src/check.c src/parser.c src/lexer.c
     ./build/verify-local/check-clang
+    clang -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror         -o build/verify-local/niyahrun-clang src/run_cli.c src/eval.c src/parser.c src/lexer.c
+    test "$(./build/verify-local/niyahrun-clang build/verify-local/run-five.نيه)" = 'RESULT=5'
     echo 'CLANG_COMPILE_AND_TEST_PASS (Clang sanitizers not claimed)'
 fi
 

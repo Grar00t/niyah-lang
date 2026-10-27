@@ -30,6 +30,18 @@ The internal C API retains AST structure and integer values but not original
 source positions. This is separate from the human-readable CLI `--ast`
 output; neither format can recreate the original source file.
 
+## Experimental constant-expression execution
+
+\`make niyahrun\` builds a **hosted Linux C11 AST interpreter** which runs only
+a zero-argument \`رئيسية() -> صحيح\` function containing exactly one
+\`أرجع\` constant integer expression. It supports +, -, *, /, %,
+unary minus and bitwise not. Integer overflow, division by zero,
+variable references, functions, branches and other unsupported constructs
+fail with an explicit diagnostic. It prints the result, e.g. \`RESULT=5\`;
+the tool exit status remains 0 on success, **not** the numeric result.
+This is not native Niyah machine code, complete execution or self-hosting.
+Run \`make test\` and \`make verify-local\` to check the supported slice.
+
 ## Build
 
 Requires a C11 compiler, GNU Make and Linux x86-64:
