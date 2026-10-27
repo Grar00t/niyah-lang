@@ -3,7 +3,7 @@
 #include "parser.h"
 enum { CHECK_MAX_SYMBOLS = 2048, CHECK_MAX_DEPTH = 128 };
 typedef enum { TY_ERROR=0, TY_I64, TY_BYTE, TY_BOOL, TY_VOID } CheckType;
-typedef struct { Token name; CheckType type; u32 scope; u8 is_const; u8 is_function; } CheckSymbol;
+typedef struct { Token name; CheckType type; u32 scope, declaration; u8 is_const; u8 is_function; } CheckSymbol;
 typedef struct {
     const Parser *parser;
     CheckSymbol symbols[CHECK_MAX_SYMBOLS];

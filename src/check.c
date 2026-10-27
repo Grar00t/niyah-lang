@@ -61,7 +61,7 @@ static int insert(Checker *c,u32 id,CheckType type,u8 is_const,u8 is_function){
         if(same(s->name,name)){error(c,id,"duplicate symbol in scope");return 0;}
     }
     if(c->count==CHECK_MAX_SYMBOLS){error(c,id,"symbol capacity exceeded");return 0;}
-    c->symbols[c->count++]=(CheckSymbol){name,type,c->scope,is_const,is_function};
+    c->symbols[c->count++]=(CheckSymbol){name,type,c->scope,id,is_const,is_function};
     return 1;
 }
 static CheckSymbol *find(Checker *c,Token name){
@@ -70,12 +70,48 @@ static CheckSymbol *find(Checker *c,Token name){
     return 0;
 }
 static CheckType expr(Checker *c,u32 id,u32 depth);
+/* Calls refer to a source-backed declaration, never a runtime function value.
+ * Signatures are collected before initializers and bodies so declaration
+ * order and recursive calls do not affect type checking. */
+static CheckType signature(Checker *c,u32 id){
+    u32 part=first(c,id);
+    while(part && at(c,part)->kind==A_PARAM){
+        declared(c,first(c,part),0);
+        part=next(c,part);
+    }
+    return part && at(c,part)->kind!=A_BLOCK ? declared(c,part,0) : TY_VOID;
+}
+static CheckType call(Checker *c,u32 id,u32 depth){
+    u32 callee=first(c,id),arg,param;
+    CheckSymbol *symbol;
+    if(!callee || at(c,callee)->kind!=A_NAME)
+        return error(c,id,"call target must be a function name");
+    symbol=find(c,at(c,callee)->tok);
+    if(!symbol)return error(c,callee,"undefined identifier");
+    if(!symbol->is_function)return error(c,callee,"call target is not a function");
+    arg=next(c,callee);
+    param=first(c,symbol->declaration);
+    while(arg && param && at(c,param)->kind==A_PARAM){
+        CheckType actual=expr(c,arg,depth+1);
+        CheckType expected=declared(c,first(c,param),0);
+        if(actual==TY_VOID)
+            return error(c,arg,"void expression cannot be used as a value");
+        if(actual==TY_ERROR || expected==TY_ERROR)return TY_ERROR;
+        if(actual!=expected)return error(c,arg,"argument type mismatch");
+        arg=next(c,arg);
+        param=next(c,param);
+    }
+    if(arg || (param && at(c,param)->kind==A_PARAM))
+        return error(c,id,"argument count mismatch");
+    return symbol->type;
+}
 static CheckType binary(Checker *c,u32 id,u32 depth) {
     const AstNode *n=at(c,id);
     u32 a=first(c,id),b=a?next(c,a):0;
     CheckType x=a?expr(c,a,depth+1):TY_ERROR;
     CheckType y=b?expr(c,b,depth+1):TY_ERROR;
     if(x==TY_ERROR||y==TY_ERROR)return TY_ERROR;
+    if(x==TY_VOID||y==TY_VOID)return error(c,id,"void expression cannot be used as a value");
     switch(n->tok.kind){
         case T_PLUS:case T_MINUS:case T_STAR:case T_SLASH:case T_PERCENT:
         case T_SHL:case T_SHR:case T_PIPE:case T_CARET:case T_AMP:
@@ -106,13 +142,15 @@ static CheckType expr(Checker *c,u32 id,u32 depth){
         case A_NAME:
             symbol=find(c,n->tok);
             if(!symbol)return error(c,id,"undefined identifier");
-            if(symbol->is_function)return error(c,id,"function value requires call typing");
+            if(symbol->is_function)return error(c,id,"function name requires a call");
             return symbol->type;
         case A_BINARY:return binary(c,id,depth);
+        case A_CALL:return call(c,id,depth);
         case A_UNARY:
             a=first(c,id);
             { CheckType t=expr(c,a,depth+1);
               if(t==TY_ERROR)return t;
+              if(t==TY_VOID)return error(c,id,"void expression cannot be used as a value");
               if(n->tok.kind==T_BANG){
                   if(t!=TY_BOOL)return error(c,id,"boolean operand required");
                   return TY_BOOL;
@@ -137,7 +175,12 @@ static void statement(Checker *c,u32 id,u32 depth,CheckType result_type){
         case A_VAR:case A_CONST:
             a=first(c,id);b=a?next(c,a):0;
             declared_type=declared(c,a,0);
-            if(b){actual=expr(c,b,0);if(declared_type!=TY_ERROR && actual!=TY_ERROR && actual!=declared_type)error(c,id,"initializer type mismatch");}
+            if(b){
+                actual=expr(c,b,0);
+                if(actual==TY_VOID)error(c,b,"void expression cannot be used as a value");
+                else if(declared_type!=TY_ERROR && actual!=TY_ERROR && actual!=declared_type)
+                    error(c,id,"initializer type mismatch");
+            }
             if(declared_type!=TY_ERROR)insert(c,id,declared_type,n->kind==A_CONST,0);
             return;
         case A_ASSIGN:
@@ -148,13 +191,15 @@ static void statement(Checker *c,u32 id,u32 depth,CheckType result_type){
             if(symbol->is_function){error(c,id,"cannot assign to function");return;}
             if(symbol->is_const){error(c,id,"cannot assign to constant");return;}
             actual=expr(c,b,0);
-            if(actual!=TY_ERROR && actual!=symbol->type)error(c,id,"assignment type mismatch");
+            if(actual==TY_VOID)error(c,b,"void expression cannot be used as a value");
+            else if(actual!=TY_ERROR && actual!=symbol->type)error(c,id,"assignment type mismatch");
             return;
         case A_EXPR_STMT:expr(c,first(c,id),0);return;
         case A_RETURN:
             a=first(c,id);
             actual=a?expr(c,a,0):TY_VOID;
-            if(actual!=TY_ERROR && actual!=result_type)error(c,id,"return type mismatch");
+            if(a && actual==TY_VOID)error(c,id,"void call cannot be returned as a value");
+            else if(actual!=TY_ERROR && actual!=result_type)error(c,id,"return type mismatch");
             return;
         case A_BLOCK:block(c,id,depth+1,result_type);return;
         case A_IF:
@@ -217,14 +262,20 @@ int checker_run(Checker *c,u32 root){
     u32 id,part,body,p;
     CheckType ret;
     if(!c||!c->parser||!root||root>=c->parser->count || at(c,root)->kind!=A_PROGRAM)return 0;
-    /* Reserve top-level function names in the same namespace as globals.
-     * Function bodies are checked later; call typing remains unsupported. */
+    /* Predeclare functions only. Globals retain declaration-order lookup. */
+    id=first(c,root);
+    while(id){
+        if(at(c,id)->kind==A_FUNC){
+            ret=signature(c,id);
+            insert(c,id,ret,1,1);
+        }
+        id=next(c,id);
+    }
     id=first(c,root);
     while(id){
         const AstNode *n=at(c,id);
         if(n->kind==A_VAR || n->kind==A_CONST)statement(c,id,0,TY_VOID);
-        else if(n->kind==A_FUNC)insert(c,id,TY_VOID,1,1);
-        else error(c,id,"struct checking not implemented in M2 slice");
+        else if(n->kind!=A_FUNC)error(c,id,"struct checking not implemented in M2 slice");
         id=next(c,id);
     }
     id=first(c,root);

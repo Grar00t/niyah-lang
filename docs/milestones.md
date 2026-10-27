@@ -38,16 +38,19 @@ recovery, source-level AST dump/reparse, real compiler and M2 typing.
 
 **First C API slice (2026-10-27):** scalar built-in type names, lexical
 scopes, exact assignment/return/operand types, duplicate and undefined name
-diagnostics, const-write protection. `tests/check_test.c` verifies 8 valid
-and 18 invalid cases (including top-level function name collisions). GCC ASan/UBSan and Clang are in local verification.
+diagnostics, const-write protection and conservative missing-return checks.
+Named scalar calls check exact arity/types and allow forward, recursive and
+mutually recursive functions. Void expressions and non-callable bindings are
+rejected in value/call contexts. `tests/check_test.c` prints executed case
+counts. GCC ASan/UBSan and Clang are in local verification.
 
 **Usable CLI slice (2026-10-27):** `niyahparse --check FILE` runs
 the current narrow semantic checker in the freestanding ELF64 binary.
 M1 syntax and AST CLI modes remain unchanged; semantic errors exit 4.
 
 **Not implemented:** user-defined structs/layout, pointer and array types,
-function calls, implicit conversions, missing-return analysis, complete
-semantic typed dumps beyond the scalar/scope subset. No native
+indirect calls, definite initialization and complete semantic typed dumps.
+Implicit conversions are deliberately rejected. No native
 program generation. See `docs/M2_SCALAR_2026-10-27.md`.
 
 - Input: AST.

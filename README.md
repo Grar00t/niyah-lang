@@ -22,10 +22,13 @@ M2 has a first, independently tested **scalar type and scope checker C API**:
 assignment and strict scalar expressions. Duplicate function names and
 function/global name collisions are rejected by the same namespace.
 Full M2 is **NOT complete**:
-function calls, structs, pointers, arrays, flow-completeness and type
-layouts remain open. `niyahparse --check` exposes only this supported
-M2 scalar/scope subset, failing on unsupported semantic constructs.
+structs, pointers, arrays, definite initialization and type layouts remain
+open. `niyahparse --check` exposes only this supported M2 scalar/scope/call subset, failing on unsupported semantic constructs.
 M2 checks that non-void functions return on all provable paths (conservative).
+Named scalar function calls support exact argument counts/types, forward
+references, recursion and mutually recursive declarations. Void calls can
+appear as statements, but cannot supply a value. This is semantic checking
+only: the experimental runner still supports constant expressions only.
 Morphology never changes programming-language identifier identity.
 
 M1 now has 30 positive / 30 negative syntax fixtures, two multi-error
@@ -81,7 +84,7 @@ src/lexer.[ch]         M0 compiler lexer
 src/morph.[ch]         opt-in morphology candidate layer
 src/parser.[ch]        M1 recursive descent and arena AST
 src/parser_cli.c       freestanding syntax, AST and narrow M2 check
-src/check.[ch]         scalar/scope semantic checker (M2 partial)
+src/check.[ch]         scalar/scope/call semantic checker (M2 partial)
 src/eval.[ch]          hosted constant-expression evaluator
 src/run_cli.c          hosted experimental runner
 examples/              sample source programs
