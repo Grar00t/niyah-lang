@@ -323,6 +323,7 @@ int eval_main(const Parser *p, u32 root, EvalResult *out) {
         out->error = "invalid program";
         return 0;
     }
+    if(p->has_tensor){out->error="tensor AST requires native niyahc execution";out->at=p->nodes[root].tok;return 0;}
     checker_init(&checker, p);
     if (!checker_run(&checker, root)) {
         out->error = checker.message ? checker.message : "semantic error";

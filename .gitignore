@@ -35,3 +35,7 @@ tests/check_test
 tests/eval_test
 tests/depth_test
 tests/native_result_probe
+tests/resource_limits_test
+__pycache__/
+**/.icann.env
+**/.icann.token

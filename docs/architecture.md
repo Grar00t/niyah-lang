@@ -48,6 +48,14 @@ declaration. Reading a global before it has been initialized or assigned fails,
 including through a called function. Assigning a later global initializes
 it, but its declaration still runs when reached and replaces that value.
 
+For a binary operator with an integer literal as its right operand, the
+emitter evaluates the left operand first and loads the literal directly into
+`rcx`, preserving the left value in `rax`. It uses a sign-extended immediate
+only within signed 32-bit range and a full 64-bit immediate otherwise.
+Other right operands keep the stack-based path; unary expressions are not
+folded. Both paths use the same operator checks. The register contract is
+documented next to the emitter's internal types in `src/codegen.c`.
+
 Integer arithmetic checks signed overflow. Division by zero and shift
 counts outside 0–63 fail. Left shifts use checked signed arithmetic; right
 shifts are arithmetic. `&&` and `||` short-circuit. Execution has bounded

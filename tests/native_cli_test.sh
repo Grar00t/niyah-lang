@@ -6,6 +6,8 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 NIYAHC=${NIYAHC:-./niyahc}
 NIYAHRUN=${NIYAHRUN:-./niyahrun}
 NATIVE_RESULT_PROBE=${NATIVE_RESULT_PROBE:-./tests/native_result_probe}
+# Scalar source keeps the historical CLI status ABI in the primary compiler.
+syntax_exit=2; semantic_exit=3; codegen_exit=4; output_exit=1
 cases=0
 failures=0
 native_ok() {
@@ -62,7 +64,21 @@ native_bad() {
     timeout 10 "$NIYAHRUN" "$src" > "$tmp/oracle" 2> "$tmp/oracle-error" || oracle_code=$?
     test "$oracle_code" -eq 3
     test ! -s "$tmp/oracle"
-    test -s "$tmp/oracle-error"
+    case "$want" in
+        120) diagnostic='signed arithmetic overflow'; oracle_message='integer overflow' ;;
+        121) diagnostic='division by zero'; oracle_message='(division|modulo) by zero' ;;
+        122) diagnostic='shift count outside 0..63'; oracle_message='invalid shift count' ;;
+        123) diagnostic='execution budget exhausted'; oracle_message='execution step limit exceeded' ;;
+        124) diagnostic='call depth exceeded'; oracle_message='call depth exceeded' ;;
+        125) diagnostic='uninitialized variable'; oracle_message='uninitialized variable' ;;
+        *) echo "FAIL unknown trap expectation $want" >&2; exit 1 ;;
+    esac
+    if test "$(wc -l < "$tmp/oracle-error")" -ne 1 ||
+       ! grep -Eq "^evaluation: [0-9]+:[0-9]+ $oracle_message$" "$tmp/oracle-error"; then
+        echo "FAIL oracle $name diagnostic: expected $oracle_message" >&2
+        cat "$tmp/oracle-error" >&2
+        exit 1
+    fi
     if ! "$NIYAHC" -o "$exe" "$src" > "$tmp/compiler-out" 2> "$tmp/compiler-err"; then
         echo "FAIL compiler execution $name" >&2
         cat "$tmp/compiler-out" "$tmp/compiler-err" >&2
@@ -73,6 +89,20 @@ native_bad() {
     if test "$got" -ne "$want" || test -s "$tmp/out" || test ! -s "$tmp/err"; then
         echo "FAIL native $name: exit=$got expected=$want with diagnostic" >&2
         cat "$tmp/out" "$tmp/err" >&2
+        exit 1
+    fi
+    printf 'runtime: %s\n' "$diagnostic" > "$tmp/expected-error"
+    if ! cmp -s "$tmp/expected-error" "$tmp/err"; then
+        echo "FAIL native $name diagnostic: expected runtime: $diagnostic" >&2
+        cat "$tmp/err" >&2
+        exit 1
+    fi
+    # Prove normal exit, not a signal whose shell status happens to collide.
+    if ! timeout 10 "$NATIVE_RESULT_PROBE" "$exe" > "$tmp/trap-result" 2> "$tmp/trap-error" ||
+       test "$(cat "$tmp/trap-result")" != "RESULT=$want" ||
+       ! cmp -s "$tmp/expected-error" "$tmp/trap-error"; then
+        echo "FAIL native $name trap observation" >&2
+        cat "$tmp/trap-result" "$tmp/trap-error" >&2
         exit 1
     fi
 }
@@ -184,6 +214,12 @@ native_ok 'high borrow' 4294967295 'دالة رئيسية() -> صحيح { أرج
 native_ok 'high bits equality branch' 0 'دالة رئيسية() -> صحيح { إذا (١ == ٢٥٧) { أرجع ١؛ } وإلا { أرجع ٠؛ } }'
 native_ok 'high signed comparison' 1 'دالة رئيسية() -> صحيح { إذا ((2147483648 > ١) && (-4294967295 < ١) && (4294967297 != ١)) { أرجع ١؛ } وإلا { أرجع ٠؛ } }'
 native_ok 'high argument and return' 1099511627777 'دالة هوية(س: صحيح) -> صحيح { أرجع س؛ } دالة رئيسية() -> صحيح { أرجع هوية(1099511627777)؛ }'
+# The literal RHS optimization must preserve effects and exact fuel use.
+native_ok 'literal RHS after effectful left call' 2147483649 'متغير ج: صحيح = ٠؛ دالة أثر() -> صحيح { ج = ج + ١؛ أرجع 4294967296؛ } دالة رئيسية() -> صحيح { متغير ن: صحيح = أثر() - 2147483648؛ أرجع ن + ج؛ }'
+native_ok 'mixed paths preserve binary call order' 208 'متغير ج: صحيح = ٠؛ دالة أثر() -> صحيح { ج = ج + ١؛ أرجع ج؛ } دالة رئيسية() -> صحيح { متغير ن: صحيح = (أثر() + ١) * (أثر() + ٢)؛ أرجع ن + ج * ١٠٠؛ }'
+# 1 declaration + 1 while statement + (N+1) conditions + N assignments + 1 return.
+native_ok 'literal loop exact fuel boundary' 499998 'دالة رئيسية() -> صحيح { متغير س: صحيح = ٠؛ طالما (س < 499998) { س = س + ١؛ } أرجع س؛ }'
+native_bad literal_loop_fuel_exhaustion 123 'دالة رئيسية() -> صحيح { متغير س: صحيح = ٠؛ طالما (س < 499999) { س = س + ١؛ } أرجع س؛ }'
 native_bad addition_overflow 120 'دالة رئيسية() -> صحيح { أرجع 9223372036854775807 + ١؛ }'
 native_bad subtraction_overflow 120 'دالة رئيسية() -> صحيح { أرجع (-9223372036854775807 - ١) - ١؛ }'
 native_bad multiplication_overflow 120 'دالة رئيسية() -> صحيح { أرجع 9223372036854775807 * ٢؛ }'
@@ -205,13 +241,13 @@ negations=''
 i=0
 while test "$i" -lt 110; do negations="$negations-"; i=$((i + 1)); done
 native_bad deep_expression_recursive_guard 124 "دالة د() -> صحيح { أرجع ${negations}د()؛ } دالة رئيسية() -> صحيح { أرجع د()؛ }"
-compile_bad syntax 2 'دالة رئيسية() -> صحيح { أرجع ١ + ؛ }'
-compile_bad type 3 'دالة رئيسية() -> صحيح { متغير س: منطقي = ١؛ أرجع ٠؛ }'
-compile_bad pointer 3 'دالة رئيسية() -> صحيح { متغير س: *صحيح؛ أرجع ٠؛ }'
-compile_bad array 3 'دالة رئيسية() -> صحيح { متغير س: [٢]صحيح؛ أرجع ٠؛ }'
-compile_bad missing_main 4 'دالة أخرى() -> صحيح { أرجع ٠؛ }'
-compile_bad main_parameters 4 'دالة رئيسية(س: صحيح) -> صحيح { أرجع س؛ }'
-compile_bad main_result 4 'دالة رئيسية() -> منطقي { أرجع ١ == ١؛ }'
+compile_bad syntax "$syntax_exit" 'دالة رئيسية() -> صحيح { أرجع ١ + ؛ }'
+compile_bad type "$semantic_exit" 'دالة رئيسية() -> صحيح { متغير س: منطقي = ١؛ أرجع ٠؛ }'
+compile_bad pointer "$semantic_exit" 'دالة رئيسية() -> صحيح { متغير س: *صحيح؛ أرجع ٠؛ }'
+compile_bad array "$semantic_exit" 'دالة رئيسية() -> صحيح { متغير س: [٢]صحيح؛ أرجع ٠؛ }'
+compile_bad missing_main "$codegen_exit" 'دالة أخرى() -> صحيح { أرجع ٠؛ }'
+compile_bad main_parameters "$codegen_exit" 'دالة رئيسية(س: صحيح) -> صحيح { أرجع س؛ }'
+compile_bad main_result "$codegen_exit" 'دالة رئيسية() -> منطقي { أرجع ١ == ١؛ }'
 # A successful result is an actual static ELF64 file with no dynamic loader.
 readelf -h "$tmp/case-1.elf" > "$tmp/header"
 grep -Fq 'ELF64' "$tmp/header"
@@ -227,22 +263,22 @@ printf 'preserve-this-output\n' > "$tmp/existing"
 cp "$tmp/existing" "$tmp/sentinel"
 status=0
 "$NIYAHC" -o "$tmp/existing" "$tmp/case-1.nya" > "$tmp/out" 2> "$tmp/err" || status=$?
-test "$status" -eq 1
+test "$status" -eq "$output_exit"
 cmp "$tmp/existing" "$tmp/sentinel"
 ln -s "$tmp/existing" "$tmp/output-link"
 status=0
 "$NIYAHC" -o "$tmp/output-link" "$tmp/case-1.nya" > "$tmp/out" 2> "$tmp/err" || status=$?
-test "$status" -eq 1
+test "$status" -eq "$output_exit"
 test -L "$tmp/output-link"
 cmp "$tmp/existing" "$tmp/sentinel"
 mkdir "$tmp/output-dir"
 status=0
 "$NIYAHC" -o "$tmp/output-dir" "$tmp/case-1.nya" > "$tmp/out" 2> "$tmp/err" || status=$?
-test "$status" -eq 1
+test "$status" -eq "$output_exit"
 test -d "$tmp/output-dir"
 status=0
 "$NIYAHC" -o "$tmp/missing-parent/out" "$tmp/case-1.nya" > "$tmp/out" 2> "$tmp/err" || status=$?
-test "$status" -eq 1
+test "$status" -eq "$output_exit"
 test ! -e "$tmp/missing-parent/out"
 # Test default output and the explicit option terminator in an isolated cwd.
 case "$NIYAHC" in /*) compiler=$NIYAHC;; *) compiler="$(pwd)/$NIYAHC";; esac

@@ -146,6 +146,7 @@ static CheckType expr(Checker *c,u32 id,u32 depth){
             return symbol->type;
         case A_BINARY:return binary(c,id,depth);
         case A_CALL:return call(c,id,depth);
+        case A_TENSOR_OP:return error(c,id,"tensor AST requires native niyahc tensor checking");
         case A_UNARY:
             a=first(c,id);
             { CheckType t=expr(c,a,depth+1);
@@ -195,6 +196,7 @@ static void statement(Checker *c,u32 id,u32 depth,CheckType result_type){
             else if(actual!=TY_ERROR && actual!=symbol->type)error(c,id,"assignment type mismatch");
             return;
         case A_EXPR_STMT:expr(c,first(c,id),0);return;
+        case A_TENSOR_OP:error(c,id,"tensor AST requires native niyahc tensor checking");return;
         case A_RETURN:
             a=first(c,id);
             actual=a?expr(c,a,0):TY_VOID;
@@ -262,6 +264,7 @@ int checker_run(Checker *c,u32 root){
     u32 id,part,body,p;
     CheckType ret;
     if(!c||!c->parser||!root||root>=c->parser->count || at(c,root)->kind!=A_PROGRAM)return 0;
+    if(c->parser->has_tensor){error(c,root,"tensor AST requires native niyahc tensor checking");return 0;}
     /* Predeclare functions only. Globals retain declaration-order lookup. */
     id=first(c,root);
     while(id){
@@ -275,6 +278,7 @@ int checker_run(Checker *c,u32 root){
     while(id){
         const AstNode *n=at(c,id);
         if(n->kind==A_VAR || n->kind==A_CONST)statement(c,id,0,TY_VOID);
+        else if(n->kind==A_TENSOR_OP)error(c,id,"tensor AST requires native niyahc tensor checking");
         else if(n->kind!=A_FUNC)error(c,id,"struct checking not implemented in M2 slice");
         id=next(c,id);
     }

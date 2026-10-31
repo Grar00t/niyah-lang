@@ -1,0 +1,10 @@
+دالة رئيسية() -> صحيح {
+    متغير a: i8x16x64 = tensor_input_a();
+    متغير b: i8x64x16 = tensor_input_b();
+    ثابت product: i32x16x16 = tensor_matmul(a, b);
+    ثابت sum: i32x16x16 = tensor_add(product, product);
+    ثابت transposed: i32x16x16 = tensor_transpose(sum);
+    ثابت activated: i32x16x16 = tensor_relu(transposed);
+    tensor_emit(activated);
+    أرجع 0;
+}

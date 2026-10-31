@@ -1,0 +1,29 @@
+دالة رئيسية() -> صحيح {
+    متغير a: i8x16x64 = tensor_input_a();
+    متغير b: i8x64x16 = tensor_input_b();
+    ثابت c0: i32x16x16 = tensor_gemm(a, b);
+    ثابت c1: i32x16x16 = tensor_gemm(a, b);
+    ثابت c2: i32x16x16 = tensor_gemm(a, b);
+    ثابت c3: i32x16x16 = tensor_gemm(a, b);
+    ثابت c4: i32x16x16 = tensor_gemm(a, b);
+    ثابت c5: i32x16x16 = tensor_gemm(a, b);
+    ثابت c6: i32x16x16 = tensor_gemm(a, b);
+    ثابت c7: i32x16x16 = tensor_gemm(a, b);
+    ثابت c8: i32x16x16 = tensor_gemm(a, b);
+    ثابت c9: i32x16x16 = tensor_gemm(a, b);
+    ثابت c10: i32x16x16 = tensor_gemm(a, b);
+    ثابت c11: i32x16x16 = tensor_gemm(a, b);
+    tensor_emit(c0);
+    tensor_emit(c1);
+    tensor_emit(c2);
+    tensor_emit(c3);
+    tensor_emit(c4);
+    tensor_emit(c5);
+    tensor_emit(c6);
+    tensor_emit(c7);
+    tensor_emit(c8);
+    tensor_emit(c9);
+    tensor_emit(c10);
+    tensor_emit(c11);
+    أرجع 0;
+}

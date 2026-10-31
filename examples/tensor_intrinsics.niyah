@@ -1,0 +1,8 @@
+دالة رئيسية() -> صحيح {
+    tensor_reserve(1);
+    متغير والكتاب: i8x16x64 = tensor_input_a();
+    متغير سيكتب: i8x64x16 = tensor_input_b();
+    ثابت نتيجة: i32x16x16 = tensor_gemm(والكتاب, سيكتب);
+    tensor_emit(نتيجة);
+    أرجع 0;
+}

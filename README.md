@@ -76,7 +76,26 @@ See the [language reference](docs/language.md),
 results with the interpreter, and separately checks the public 8-bit exit
 status. A test-only helper observes the unmodified program's exit-syscall
 argument using Linux `ptrace` on its own child. Tests require permission
-for parent-child tracing; unavailable tracing fails explicitly.
+for parent-child tracing and Linux 5.3 or newer for
+[`PTRACE_GET_SYSCALL_INFO`](https://man7.org/linux/man-pages/man2/ptrace.2.html);
+unavailable tracing fails explicitly. Test tools also include Python 3.10+
+and GNU `objdump`, `readelf` and `timeout`.
+
+The seeded differential suite runs 200 bounded, typed Niyah programs by
+default. Its independent i64 oracle defines overflow, truncating division,
+remainder and shifts explicitly. Sources and observations are retained under
+`TEST_EVIDENCE_DIR` (default `build/test-evidence`); failures also retain a
+budget-limited reduced reproducer. To extend the run:
+
+```sh
+python3 tests/differential_test.py --seed 20261027 --cases 2000 --evidence-dir build/differential-expanded
+```
+
+For measurements against a baseline compiler in its source checkout, run
+`python3 tests/benchmark_codegen.py --baseline ../baseline/niyahc --output /tmp/niyah-benchmark --timings`
+after other tests stop. The output directory must be new. This separates
+full-i64 correctness from untraced timing and records instruction bytes,
+stack operations, warmups, paired samples, medians and dispersion.
 
 `make verify-local` also builds and tests the host tools with GCC
 ASan/UBSan and ordinary Clang. The generated machine code is not sanitizer

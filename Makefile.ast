@@ -1,0 +1,48 @@
+# GNU/Python tooling is build-time only; niyahc and generated ELF need no libc.
+NIYAH_MODEL ?= ../niyah-assembly-model
+AST_MODEL = $(abspath $(NIYAH_MODEL))
+AST_BUILD = build/tensor_core
+AST_FLAGS = -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -ffreestanding -fno-builtin -fno-stack-protector -fno-pie -fno-tree-loop-distribute-patterns -fno-asynchronous-unwind-tables -fno-unwind-tables -mno-avx -mno-avx2
+$(AST_MODEL)/build/tile_allocator: $(AST_MODEL)/src/tile_allocator.s
+	$(MAKE) -C "$(AST_MODEL)" tile-allocator
+$(AST_BUILD)/niyah_legacy_tensor_templates.h $(AST_BUILD)/tensor_allocate.s &: tools/gen_tensor_templates.py src/tensor_ir_bridge.s $(AST_MODEL)/src/tensor_runtime.s $(AST_MODEL)/src/tensor_dispatch.s $(AST_MODEL)/src/tile_allocator.s $(AST_MODEL)/build/tile_allocator niyahc-tile
+	python3 tools/gen_tensor_templates.py . "$(AST_MODEL)"
+$(AST_BUILD)/niyah_unicode_nfkc.h: tools/gen_tensor_unicode.py
+	python3 tools/gen_tensor_unicode.py .
+$(AST_BUILD)/tensor_v2_templates.h: tools/gen_tensor_v2.py src/tensor_v2_runtime.s $(AST_MODEL)/src/tensor_dispatch.s
+	python3 tools/gen_tensor_v2.py . "$(AST_MODEL)"
+$(AST_BUILD)/tensor_allocate.o: $(AST_BUILD)/tensor_allocate.s
+	as --64 -o $@ $<
+niyahc: src/compile_cli.c src/codegen.c src/codegen.h $(FRONTEND) $(HEADERS) src/morph.c src/morph.h src/tensor_core.c src/tensor_core.h src/tensor_normalize.c src/tensor_normalize.h src/compiler_native.c src/compiler_start.s $(AST_BUILD)/niyah_legacy_tensor_templates.h $(AST_BUILD)/niyah_unicode_nfkc.h $(AST_BUILD)/tensor_allocate.o
+	$(CC) $(AST_FLAGS) -DNIYAH_TENSOR_CORE -I$(AST_BUILD) -nostdlib -static -no-pie -Wl,--build-id=none,-z,noexecstack,-Map,$(AST_BUILD)/niyahc.map -o $@ src/compiler_start.s src/compile_cli.c src/compiler_native.c src/codegen.c src/tensor_core.c src/tensor_normalize.c src/morph.c $(FRONTEND) $(AST_BUILD)/tensor_allocate.o
+
+.PHONY: test-ast-tensor
+test-ast-tensor: niyahc niyahc-tile
+	NIYAH_MODEL="$(AST_MODEL)" python3 tests/test_ast_tensor.py
+test: test-ast-tensor
+
+.PHONY: test-tensor-v2
+# Preserved experimental V2 acceptance gate; outside the fixed GEMM contract.
+test-tensor-v2: niyahc $(AST_BUILD)/tensor_v2_templates.h
+	python3 tests/test_tensor_v2.py
+	NIYAH_MODEL="$(AST_MODEL)" python3 tests/test_tensor_v2_schedule.py
+	python3 tests/test_tensor_v2_runtime.py --model "$(AST_MODEL)"
+# V2 spills and normalized binding are intentionally excluded from production.
+
+.PHONY: test-tensor-normalize
+test-tensor-normalize: $(AST_BUILD)/niyah_unicode_nfkc.h
+	python3 tests/test_tensor_normalize.py
+test: test-tensor-normalize
+
+# Acceptance gates for the supported in-process fixed-shape contract.
+$(AST_BUILD)/tensor_allocation_test: tests/tensor_allocation_test.c src/tensor_core.c src/tensor_core.h src/parser.c src/parser.h src/lexer.c src/lexer.h src/morph.c src/morph.h $(AST_BUILD)/niyah_legacy_tensor_templates.h $(AST_BUILD)/tensor_allocate.o
+	$(CC) -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie -Isrc -I$(AST_BUILD) -Wl,--wrap=tensor_allocate -o $@ tests/tensor_allocation_test.c src/tensor_core.c src/parser.c src/lexer.c src/morph.c $(AST_BUILD)/tensor_allocate.o
+$(AST_BUILD)/syscall_fault_probe: tests/syscall_fault_probe.c
+	mkdir -p $(AST_BUILD)
+	$(CC) $(HOST_CFLAGS) -o $@ $<
+.PHONY: test-tensor-contract
+test-tensor-contract: niyahc $(AST_BUILD)/tensor_allocation_test $(AST_BUILD)/syscall_fault_probe
+	./$(AST_BUILD)/tensor_allocation_test
+	python3 tests/test_tensor_contract.py
+	python3 tests/test_tensor_guarded_runtime.py --runtime "$(AST_MODEL)/src/tensor_runtime.s" --evidence "$(AST_BUILD)/guarded_runtime_receipt.json"
+test: test-tensor-contract

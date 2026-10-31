@@ -59,6 +59,10 @@ static u32 dec(const u8 *p, const u8 *e, u32 *n) {
 }
 
 static int is_alpha(u32 c) {
+#ifdef NIYAH_TENSOR_CORE
+    extern int tensor_arabic_letter(u32);
+    if(tensor_arabic_letter(c))return 1;
+#endif
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' ||
            (c >= 0x0620 && c <= 0x064A) || (c >= 0x066E && c <= 0x06D3) ||
            (c >= 0x06FA && c <= 0x06FF);
@@ -70,7 +74,13 @@ static int digit_val(u32 c) {
     if (c >= 0x06F0 && c <= 0x06F9) return (int)(c - 0x06F0);
     return -1;
 }
-static int is_mark(u32 c) { return (c >= 0x064B && c <= 0x065F) || c == 0x0670; } /* harakat, shadda */
+static int is_mark(u32 c) {
+#ifdef NIYAH_TENSOR_CORE
+    extern int tensor_arabic_mark(u32);
+    if(tensor_arabic_mark(c))return 1;
+#endif
+    return (c >= 0x064B && c <= 0x065F) || c == 0x0670;
+} /* harakat, shadda */
 static int is_alnum(u32 c) { return is_alpha(c) || digit_val(c) >= 0 || is_mark(c); }
 
 static u32 peekc(const Lexer *L, u32 *n) { return dec(L->cur, L->end, n); }

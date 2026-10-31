@@ -80,7 +80,8 @@ static void dump(const Parser *p, u32 root) {
         if (n->kind == A_NAME || n->kind == A_FUNC || n->kind == A_STRUCT ||
             n->kind == A_VAR || n->kind == A_CONST || n->kind == A_PARAM ||
             n->kind == A_FIELD || n->kind == A_TYPE_NAME || n->kind == A_MEMBER ||
-            n->kind == A_INT || n->kind == A_STRING || n->kind == A_TYPE_ARRAY) {
+            n->kind == A_INT || n->kind == A_STRING || n->kind == A_TYPE_ARRAY ||
+            n->kind == A_TENSOR_OP) {
             str(" ");
             put(n->tok.start, n->tok.len);
         } else if (n->kind == A_UNARY || n->kind == A_BINARY ||

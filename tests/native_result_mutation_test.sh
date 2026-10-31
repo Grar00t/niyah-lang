@@ -43,7 +43,7 @@ test "$(cat "$tmp/mutated-result")" = 'RESULT=257'
 
 # The real suite must fail on the changed full value, not an unrelated setup error.
 status=0
-NIYAHC="$tmp/niyahc-mutant" NATIVE_RESULT_PROBE="$NATIVE_RESULT_PROBE" \
+NIYAHC_LEGACY_CODES=1 NIYAHC="$tmp/niyahc-mutant" NATIVE_RESULT_PROBE="$NATIVE_RESULT_PROBE" \
     sh tests/native_cli_test.sh > "$tmp/suite-out" 2> "$tmp/suite-error" || status=$?
 test "$status" -eq 1
 grep -Fq 'FAIL native full i64 precedence: expected RESULT=14' "$tmp/suite-error"
@@ -57,3 +57,23 @@ test "$status" -ne 0
 test ! -s "$tmp/missing-out"
 test -s "$tmp/missing-error"
 echo 'NATIVE_RESULT_MUTATION_PASS: equal 8-bit exits, distinct i64 values, corrupted entry result rejected'
+
+# A trap with the right status and wrong diagnostic must also be rejected.
+awk '
+{
+    if (sub(/runtime: signed arithmetic overflow/, "runtime: division by zero"))
+        matches++
+    print
+}
+END { if (matches != 1) exit 1 }
+' src/codegen.c > "$tmp/codegen-wrong-diagnostic.c"
+"$compiler" -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -Isrc \
+    -o "$tmp/niyahc-wrong-diagnostic" src/compile_cli.c "$tmp/codegen-wrong-diagnostic.c" \
+    src/check.c src/parser.c src/lexer.c
+status=0
+NIYAHC_LEGACY_CODES=1 NIYAHC="$tmp/niyahc-wrong-diagnostic" NATIVE_RESULT_PROBE="$NATIVE_RESULT_PROBE" \
+    sh tests/native_cli_test.sh > "$tmp/diagnostic-out" 2> "$tmp/diagnostic-error" || status=$?
+test "$status" -eq 1
+grep -Fxq 'FAIL native addition_overflow diagnostic: expected runtime: signed arithmetic overflow' "$tmp/diagnostic-error"
+grep -Fxq 'runtime: division by zero' "$tmp/diagnostic-error"
+echo 'NATIVE_DIAGNOSTIC_MUTATION_PASS: correct status with wrong trap diagnostic rejected'
